@@ -4,7 +4,8 @@ import Foundation
 final class FeedStore {
     private struct StoredState: Codable {
         var globalRefreshMinutes: Int
-        var feeds: [Feed]
+        var feeds: [Feed]?
+        var items: [FeedListItem]?
         var launchAtLogin: Bool?
         var notificationsEnabled: Bool?
         var highlightUnreadInStatusItem: Bool?
@@ -32,7 +33,10 @@ final class FeedStore {
     private(set) var showGlobalMarkAllRead: Bool
     private(set) var showGlobalMarkAllUnread: Bool
     private(set) var showGlobalShowAllUnread: Bool
-    private(set) var feeds: [Feed]
+    private(set) var items: [FeedListItem]
+    var feeds: [Feed] {
+        items.compactMap(\.feed)
+    }
     private var readStoryIDs: Set<String>
 
     private var observers: [UUID: () -> Void] = [:]
@@ -45,7 +49,7 @@ final class FeedStore {
             launchAtLogin = decoded.launchAtLogin ?? false
             notificationsEnabled = decoded.notificationsEnabled ?? true
             highlightUnreadInStatusItem = decoded.highlightUnreadInStatusItem ?? true
-            feeds = decoded.feeds
+            items = decoded.items ?? (decoded.feeds ?? []).map(FeedListItem.init(feed:))
             readStoryIDs = decoded.readStoryIDs ?? []
             showMenuBarIcon = decoded.showMenuBarIcon ?? true
             showUnreadCountInMenuBar = decoded.showUnreadCountInMenuBar ?? true
@@ -59,7 +63,7 @@ final class FeedStore {
             launchAtLogin = false
             notificationsEnabled = true
             highlightUnreadInStatusItem = true
-            feeds = []
+            items = []
             readStoryIDs = []
             showMenuBarIcon = true
             showUnreadCountInMenuBar = true
@@ -104,34 +108,53 @@ final class FeedStore {
     }
 
     func addFeed(url: URL, name: String = "", refreshMinutes: Int? = nil) {
-        feeds.append(Feed(id: UUID(), name: name, url: url, refreshMinutes: refreshMinutes, iconURL: nil))
+        items.append(.feed(Feed(id: UUID(), name: name, url: url, refreshMinutes: refreshMinutes, iconURL: nil)))
+        save()
+    }
+
+    func addSeparator(title: String = "") {
+        items.append(.separator(FeedSeparator(id: UUID(), title: title)))
         save()
     }
 
     func updateFeed(_ feed: Feed) {
-        guard let index = feeds.firstIndex(where: { $0.id == feed.id }) else { return }
-        feeds[index] = feed
+        guard let index = items.firstIndex(where: { $0.id == feed.id }) else { return }
+        items[index] = .feed(feed)
+        save()
+    }
+
+    func updateSeparator(_ separator: FeedSeparator) {
+        guard let index = items.firstIndex(where: { $0.id == separator.id }) else { return }
+        items[index] = .separator(separator)
         save()
     }
 
     func update(globalRefreshMinutes: Int, feed: Feed?) {
         self.globalRefreshMinutes = max(0, globalRefreshMinutes)
-        if let feed, let index = feeds.firstIndex(where: { $0.id == feed.id }) {
-            feeds[index] = feed
+        if let feed, let index = items.firstIndex(where: { $0.id == feed.id }) {
+            items[index] = .feed(feed)
         }
         save()
     }
 
     func removeFeed(id: UUID) {
-        feeds.removeAll { $0.id == id }
+        removeItem(id: id)
+    }
+
+    func removeItem(id: UUID) {
+        items.removeAll { $0.id == id }
+        save()
+    }
+
+    func moveItem(from source: Int, to destination: Int) {
+        guard items.indices.contains(source), items.indices.contains(destination), source != destination else { return }
+        let item = items.remove(at: source)
+        items.insert(item, at: destination)
         save()
     }
 
     func moveFeed(from source: Int, to destination: Int) {
-        guard feeds.indices.contains(source), feeds.indices.contains(destination), source != destination else { return }
-        let feed = feeds.remove(at: source)
-        feeds.insert(feed, at: destination)
-        save()
+        moveItem(from: source, to: destination)
     }
 
     func isStoryRead(_ story: FeedStory) -> Bool {
@@ -179,6 +202,7 @@ final class FeedStore {
         let state = StoredState(
             globalRefreshMinutes: globalRefreshMinutes,
             feeds: feeds,
+            items: items,
             launchAtLogin: launchAtLogin,
             notificationsEnabled: notificationsEnabled,
             highlightUnreadInStatusItem: highlightUnreadInStatusItem,

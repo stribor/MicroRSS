@@ -17,8 +17,12 @@ final class PreferencesWindowController: NSWindowController {
 
     private let store: FeedStore
     private let iconCache = FeedIconCache()
+    private let feedRowPasteboardType = NSPasteboard.PasteboardType("com.ivang.MicroRSS.feed-list-row")
     private let tabView = NSTabView()
     private let tableView = NSTableView()
+    private let removeItemButton = NSButton(title: "-", target: nil, action: nil)
+    private let moveUpButton = NSButton(title: "Up", target: nil, action: nil)
+    private let moveDownButton = NSButton(title: "Down", target: nil, action: nil)
     private let globalRefreshField = NSTextField()
     private let launchAtLoginButton = NSButton(checkboxWithTitle: "Start at login", target: nil, action: nil)
     private let notificationsButton = NSButton(checkboxWithTitle: "Show notifications for new articles", target: nil, action: nil)
@@ -31,7 +35,7 @@ final class PreferencesWindowController: NSWindowController {
     private let globalMarkAllUnreadButton = NSButton(checkboxWithTitle: "Mark all unread", target: nil, action: nil)
     private let globalShowAllUnreadButton = NSButton(checkboxWithTitle: "Show all unread", target: nil, action: nil)
     private let feedCountLabel = NSTextField(labelWithString: "")
-    private var selectedFeedID: UUID?
+    private var selectedItemID: UUID?
     private var storeObserverID: UUID?
 
     init(store: FeedStore) {
@@ -276,6 +280,8 @@ final class PreferencesWindowController: NSWindowController {
         tableView.dataSource = self
         tableView.target = self
         tableView.action = #selector(selectionChanged)
+        tableView.registerForDraggedTypes([feedRowPasteboardType])
+        tableView.setDraggingSourceOperationMask(.move, forLocal: true)
         scroll.documentView = tableView
         scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 360).isActive = true
         return scroll
@@ -291,15 +297,20 @@ final class PreferencesWindowController: NSWindowController {
 
     private func buildFeedControls() -> NSView {
         let addButton = NSButton(title: "+", target: self, action: #selector(addFeed))
-        let removeButton = NSButton(title: "-", target: self, action: #selector(removeFeed))
-        let upButton = NSButton(title: "Up", target: self, action: #selector(moveFeedUp))
-        let downButton = NSButton(title: "Down", target: self, action: #selector(moveFeedDown))
+        let addSeparatorButton = NSButton(title: "Separator", target: self, action: #selector(addSeparator))
         let spacer = NSView()
+
+        removeItemButton.target = self
+        removeItemButton.action = #selector(removeSelectedItem)
+        moveUpButton.target = self
+        moveUpButton.action = #selector(moveFeedUp)
+        moveDownButton.target = self
+        moveDownButton.action = #selector(moveFeedDown)
 
         feedCountLabel.font = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
         feedCountLabel.alignment = .center
 
-        let controls = NSStackView(views: [addButton, removeButton, upButton, downButton, spacer, feedCountLabel])
+        let controls = NSStackView(views: [addButton, addSeparatorButton, removeItemButton, moveUpButton, moveDownButton, spacer, feedCountLabel])
         controls.orientation = .horizontal
         controls.spacing = 8
         controls.translatesAutoresizingMaskIntoConstraints = false
@@ -356,44 +367,71 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     private func reloadSelection() {
-        feedCountLabel.stringValue = "\(store.feeds.count) \(store.feeds.count == 1 ? "feed" : "feeds")"
+        let separatorCount = store.items.filter {
+            if case .separator = $0 { return true }
+            return false
+        }.count
+        let feedText = "\(store.feeds.count) \(store.feeds.count == 1 ? "feed" : "feeds")"
+        feedCountLabel.stringValue = separatorCount == 0 ? feedText : "\(feedText), \(separatorCount) \(separatorCount == 1 ? "separator" : "separators")"
 
-        if selectedFeedID == nil, let first = store.feeds.first {
-            selectedFeedID = first.id
-            tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-        } else if let selectedFeedID,
-                  let row = store.feeds.firstIndex(where: { $0.id == selectedFeedID }),
+        if let selectedItemID,
+                  let row = store.items.firstIndex(where: { $0.id == selectedItemID }),
                   tableView.selectedRow != row {
             tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        } else if selectedItemID != nil {
+            selectedItemID = nil
+            tableView.deselectAll(nil)
         }
+
+        updateFeedControls()
+    }
+
+    private func updateFeedControls() {
+        let row = tableView.selectedRow
+        let hasSelection = store.items.indices.contains(row)
+        removeItemButton.isEnabled = hasSelection
+        moveUpButton.isEnabled = hasSelection && row > 0
+        moveDownButton.isEnabled = hasSelection && row < store.items.count - 1
     }
 
     private var selectedFeed: Feed? {
-        guard let selectedFeedID else { return nil }
-        return store.feeds.first { $0.id == selectedFeedID }
+        guard let selectedItemID else { return nil }
+        return store.feeds.first { $0.id == selectedItemID }
     }
 
     @objc private func selectionChanged() {
         let row = tableView.selectedRow
-        guard store.feeds.indices.contains(row) else { return }
-        selectedFeedID = store.feeds[row].id
+        selectedItemID = store.items.indices.contains(row) ? store.items[row].id : nil
         reloadSelection()
     }
 
     @objc private func addFeed() {
         store.addFeed(url: URL(string: "https://example.com/feed.xml")!)
-        selectedFeedID = store.feeds.last?.id
+        selectedItemID = store.items.last?.id
         tableView.reloadData()
-        tableView.selectRowIndexes(IndexSet(integer: max(0, store.feeds.count - 1)), byExtendingSelection: false)
+        tableView.selectRowIndexes(IndexSet(integer: max(0, store.items.count - 1)), byExtendingSelection: false)
         reloadSelection()
         selectPane(identifier: TabID.feeds)
         editSelectedFeedColumn("url")
     }
 
-    @objc private func removeFeed() {
-        guard let selectedFeedID else { return }
-        store.removeFeed(id: selectedFeedID)
-        self.selectedFeedID = store.feeds.first?.id
+    @objc private func addSeparator() {
+        store.addSeparator()
+        selectedItemID = store.items.last?.id
+        tableView.reloadData()
+        tableView.selectRowIndexes(IndexSet(integer: max(0, store.items.count - 1)), byExtendingSelection: false)
+        reloadSelection()
+        selectPane(identifier: TabID.feeds)
+        editSelectedFeedColumn("name")
+    }
+
+    @objc private func removeSelectedItem() {
+        let row = tableView.selectedRow
+        guard store.items.indices.contains(row) else { return }
+        let removedID = store.items[row].id
+        let nextSelectionIndex = min(row, store.items.count - 2)
+        store.removeItem(id: removedID)
+        selectedItemID = store.items.indices.contains(nextSelectionIndex) ? store.items[nextSelectionIndex].id : nil
         tableView.reloadData()
         reloadSelection()
     }
@@ -401,14 +439,16 @@ final class PreferencesWindowController: NSWindowController {
     @objc private func moveFeedUp() {
         let row = tableView.selectedRow
         guard row > 0 else { return }
-        store.moveFeed(from: row, to: row - 1)
+        store.moveItem(from: row, to: row - 1)
+        selectedItemID = store.items[row - 1].id
         tableView.selectRowIndexes(IndexSet(integer: row - 1), byExtendingSelection: false)
     }
 
     @objc private func moveFeedDown() {
         let row = tableView.selectedRow
-        guard row >= 0, row < store.feeds.count - 1 else { return }
-        store.moveFeed(from: row, to: row + 1)
+        guard row >= 0, row < store.items.count - 1 else { return }
+        store.moveItem(from: row, to: row + 1)
+        selectedItemID = store.items[row + 1].id
         tableView.selectRowIndexes(IndexSet(integer: row + 1), byExtendingSelection: false)
     }
 
@@ -474,11 +514,11 @@ final class PreferencesWindowController: NSWindowController {
 
 extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int {
-        store.feeds.count
+        store.items.count
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard store.feeds.indices.contains(row), let tableColumn else { return nil }
+        guard store.items.indices.contains(row), let tableColumn else { return nil }
         let identifier = NSUserInterfaceItemIdentifier("FeedCell-\(tableColumn.identifier.rawValue)")
         let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? NSTableCellView()
         cell.identifier = identifier
@@ -534,8 +574,48 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
             cell.imageView?.isHidden = false
         }
 
-        let feed = store.feeds[row]
+        let item = store.items[row]
         label.textColor = .labelColor
+        label.isEditable = true
+        label.isSelectable = true
+
+        if case .separator(let separator) = item {
+            cell.imageView?.image = nil
+            switch tableColumn.identifier.rawValue {
+            case "name":
+                label.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+                label.alignment = .left
+                label.lineBreakMode = .byTruncatingTail
+                label.placeholderString = "Separator"
+                label.stringValue = separator.title
+                label.isEditable = true
+                label.isSelectable = true
+            case "url":
+                label.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+                label.alignment = .left
+                label.lineBreakMode = .byTruncatingTail
+                label.textColor = .tertiaryLabelColor
+                label.placeholderString = nil
+                label.stringValue = "Menu separator"
+                label.isEditable = false
+                label.isSelectable = false
+            case "refresh":
+                label.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+                label.alignment = .right
+                label.lineBreakMode = .byTruncatingTail
+                label.textColor = .tertiaryLabelColor
+                label.placeholderString = nil
+                label.stringValue = ""
+                label.isEditable = false
+                label.isSelectable = false
+            default:
+                label.placeholderString = nil
+                label.stringValue = ""
+            }
+            return cell
+        }
+
+        guard case .feed(let feed) = item else { return cell }
         switch tableColumn.identifier.rawValue {
         case "name":
             if let image = iconCache.image(for: feed) {
@@ -567,6 +647,45 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
             label.stringValue = ""
         }
         return cell
+    }
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard store.items.indices.contains(row) else { return nil }
+        let item = NSPasteboardItem()
+        item.setString(store.items[row].id.uuidString, forType: feedRowPasteboardType)
+        return item
+    }
+
+    func tableView(
+        _ tableView: NSTableView,
+        validateDrop info: NSDraggingInfo,
+        proposedRow row: Int,
+        proposedDropOperation dropOperation: NSTableView.DropOperation
+    ) -> NSDragOperation {
+        tableView.setDropRow(row, dropOperation: .above)
+        return .move
+    }
+
+    func tableView(
+        _ tableView: NSTableView,
+        acceptDrop info: NSDraggingInfo,
+        row: Int,
+        dropOperation: NSTableView.DropOperation
+    ) -> Bool {
+        guard let idString = info.draggingPasteboard.string(forType: feedRowPasteboardType),
+              let id = UUID(uuidString: idString),
+              let source = store.items.firstIndex(where: { $0.id == id }) else { return false }
+
+        let clampedRow = min(max(row, 0), store.items.count)
+        let destination = source < clampedRow ? clampedRow - 1 : clampedRow
+        guard store.items.indices.contains(destination), source != destination else { return false }
+
+        store.moveItem(from: source, to: destination)
+        selectedItemID = id
+        tableView.reloadData()
+        tableView.selectRowIndexes(IndexSet(integer: destination), byExtendingSelection: false)
+        reloadSelection()
+        return true
     }
 }
 
@@ -625,11 +744,24 @@ extension PreferencesWindowController: NSTextFieldDelegate {
 
         let row = tableView.row(for: field)
         let column = tableView.column(for: field)
-        guard store.feeds.indices.contains(row), column >= 0 else { return }
+        guard store.items.indices.contains(row), column >= 0 else { return }
 
-        var feed = store.feeds[row]
         let identifier = tableView.tableColumns[column].identifier.rawValue
         let value = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if case .separator(var separator) = store.items[row] {
+            guard identifier == "name" else {
+                tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: column))
+                return
+            }
+            separator.title = value == separator.displayName ? "" : value
+            selectedItemID = separator.id
+            store.updateSeparator(separator)
+            tableView.reloadData()
+            return
+        }
+
+        guard case .feed(var feed) = store.items[row] else { return }
 
         switch identifier {
         case "name":
@@ -653,7 +785,7 @@ extension PreferencesWindowController: NSTextFieldDelegate {
             return
         }
 
-        selectedFeedID = feed.id
+        selectedItemID = feed.id
         store.updateFeed(feed)
         tableView.reloadData()
     }

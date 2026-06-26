@@ -51,12 +51,17 @@ final class StatusMenuController: NSObject {
         addGlobalMenuItems()
         menu.addItem(.separator())
 
-        if store.feeds.isEmpty {
+        if store.items.isEmpty {
             let empty = NSMenuItem(title: "No feeds configured", action: nil, keyEquivalent: "")
             empty.isEnabled = false
             menu.addItem(empty)
         } else {
-            for feed in store.feeds {
+            for item in store.items {
+                guard case .feed(let feed) = item else {
+                    menu.addItem(.separator())
+                    continue
+                }
+
                 let stories = storiesByFeed[feed.id] ?? []
                 let unreadCount = store.unreadStories(in: stories).count
                 let item = NSMenuItem(title: feedMenuTitle(feed: feed, unreadCount: unreadCount), action: nil, keyEquivalent: "")
