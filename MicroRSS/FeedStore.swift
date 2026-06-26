@@ -5,12 +5,18 @@ final class FeedStore {
     private struct StoredState: Codable {
         var globalRefreshMinutes: Int
         var feeds: [Feed]
+        var launchAtLogin: Bool?
+        var notificationsEnabled: Bool?
+        var highlightUnreadInStatusItem: Bool?
     }
 
     private let defaults: UserDefaults
     private let key = "MicroRSS.FeedStore.v1"
 
     private(set) var globalRefreshMinutes: Int
+    private(set) var launchAtLogin: Bool
+    private(set) var notificationsEnabled: Bool
+    private(set) var highlightUnreadInStatusItem: Bool
     private(set) var feeds: [Feed]
 
     private var observers: [UUID: () -> Void] = [:]
@@ -20,11 +26,30 @@ final class FeedStore {
         if let data = defaults.data(forKey: key),
            let decoded = try? JSONDecoder().decode(StoredState.self, from: data) {
             globalRefreshMinutes = decoded.globalRefreshMinutes
+            launchAtLogin = decoded.launchAtLogin ?? false
+            notificationsEnabled = decoded.notificationsEnabled ?? true
+            highlightUnreadInStatusItem = decoded.highlightUnreadInStatusItem ?? true
             feeds = decoded.feeds
         } else {
             globalRefreshMinutes = 30
+            launchAtLogin = false
+            notificationsEnabled = true
+            highlightUnreadInStatusItem = true
             feeds = []
         }
+    }
+
+    func updateGeneral(
+        globalRefreshMinutes: Int,
+        launchAtLogin: Bool,
+        notificationsEnabled: Bool,
+        highlightUnreadInStatusItem: Bool
+    ) {
+        self.globalRefreshMinutes = max(1, globalRefreshMinutes)
+        self.launchAtLogin = launchAtLogin
+        self.notificationsEnabled = notificationsEnabled
+        self.highlightUnreadInStatusItem = highlightUnreadInStatusItem
+        save()
     }
 
     func updateGlobalRefresh(minutes: Int) {
@@ -75,7 +100,13 @@ final class FeedStore {
     }
 
     private func save() {
-        let state = StoredState(globalRefreshMinutes: globalRefreshMinutes, feeds: feeds)
+        let state = StoredState(
+            globalRefreshMinutes: globalRefreshMinutes,
+            feeds: feeds,
+            launchAtLogin: launchAtLogin,
+            notificationsEnabled: notificationsEnabled,
+            highlightUnreadInStatusItem: highlightUnreadInStatusItem
+        )
         if let data = try? JSONEncoder().encode(state) {
             defaults.set(data, forKey: key)
         }

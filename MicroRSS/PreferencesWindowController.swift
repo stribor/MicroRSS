@@ -1,10 +1,20 @@
 import AppKit
+import ServiceManagement
 
 @MainActor
 final class PreferencesWindowController: NSWindowController {
+    private enum TabID {
+        static let general = "general"
+        static let feeds = "feeds"
+    }
+
     private let store: FeedStore
+    private let tabView = NSTabView()
     private let tableView = NSTableView()
     private let globalRefreshField = NSTextField()
+    private let launchAtLoginButton = NSButton(checkboxWithTitle: "Start at login", target: nil, action: nil)
+    private let notificationsButton = NSButton(checkboxWithTitle: "Show notifications for new articles", target: nil, action: nil)
+    private let statusHighlightButton = NSButton(checkboxWithTitle: "Highlight unread items in the menu bar", target: nil, action: nil)
     private let nameField = NSTextField()
     private let urlField = NSTextField()
     private let refreshField = NSTextField()
@@ -15,17 +25,19 @@ final class PreferencesWindowController: NSWindowController {
     init(store: FeedStore) {
         self.store = store
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 940, height: 560),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "Feeds"
-        window.minSize = NSSize(width: 780, height: 500)
+        window.title = "MicroRSS Settings"
+        window.minSize = NSSize(width: 820, height: 520)
         super.init(window: window)
         buildUI()
+        reloadGeneralSettings()
         reloadSelection()
         storeObserverID = store.observe { [weak self] in
+            self?.reloadGeneralSettings()
             self?.tableView.reloadData()
             self?.reloadSelection()
         }
@@ -35,56 +47,123 @@ final class PreferencesWindowController: NSWindowController {
         nil
     }
 
+    deinit {
+        if let storeObserverID {
+            MainActor.assumeIsolated {
+                store.removeObserver(id: storeObserverID)
+            }
+        }
+    }
+
     private func buildUI() {
         guard let content = window?.contentView else { return }
 
-        let root = NSStackView()
-        root.orientation = .vertical
-        root.spacing = 12
-        root.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(root)
+        tabView.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(tabView)
 
         NSLayoutConstraint.activate([
-            root.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 18),
-            root.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -18),
-            root.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
-            root.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16)
+            tabView.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
+            tabView.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
+            tabView.topAnchor.constraint(equalTo: content.topAnchor, constant: 14),
+            tabView.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16)
         ])
 
-        root.addArrangedSubview(buildHeader())
-        root.addArrangedSubview(buildFeedTable())
-        root.addArrangedSubview(buildFeedControls())
-        root.addArrangedSubview(buildEditor())
+        tabView.addTabViewItem(tabItem(identifier: TabID.general, label: "General", view: buildGeneralPane()))
+        tabView.addTabViewItem(tabItem(identifier: TabID.feeds, label: "Feeds", view: buildFeedsPane()))
     }
 
-    private func buildHeader() -> NSView {
+    private func tabItem(identifier: String, label: String, view: NSView) -> NSTabViewItem {
+        let item = NSTabViewItem(identifier: identifier)
+        item.label = label
+        item.view = view
+        return item
+    }
+
+    private func buildGeneralPane() -> NSView {
         let container = NSView()
-        let title = NSTextField(labelWithString: "Feeds")
+        let root = NSStackView()
+        root.orientation = .vertical
+        root.alignment = .leading
+        root.spacing = 18
+        root.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(root)
+
+        let title = NSTextField(labelWithString: "General")
         title.font = NSFont.boldSystemFont(ofSize: 17)
 
-        globalRefreshField.stringValue = "\(store.globalRefreshMinutes)"
+        globalRefreshField.placeholderString = "30"
         configureSingleLineField(globalRefreshField)
 
-        let label = NSTextField(labelWithString: "Global refresh (min)")
-        let stack = NSStackView(views: [label, globalRefreshField])
-        stack.orientation = .horizontal
-        stack.spacing = 8
+        let form = NSGridView()
+        form.rowSpacing = 12
+        form.columnSpacing = 12
+        form.addRow(with: [label("Global refresh (min)"), globalRefreshField])
+        form.column(at: 0).xPlacement = .trailing
+        form.column(at: 1).xPlacement = .leading
 
-        title.translatesAutoresizingMaskIntoConstraints = false
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(title)
-        container.addSubview(stack)
+        let options = NSStackView(views: [launchAtLoginButton, notificationsButton, statusHighlightButton])
+        options.orientation = .vertical
+        options.alignment = .leading
+        options.spacing = 10
+
+        let saveButton = NSButton(title: "Save General Settings", target: self, action: #selector(saveGeneralSettings))
+        saveButton.bezelStyle = .rounded
+
+        root.addArrangedSubview(title)
+        root.addArrangedSubview(form)
+        root.addArrangedSubview(options)
+        root.addArrangedSubview(saveButton)
 
         NSLayoutConstraint.activate([
-            title.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            title.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            globalRefreshField.widthAnchor.constraint(equalToConstant: 72),
-            container.heightAnchor.constraint(equalToConstant: 28)
+            root.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 28),
+            root.topAnchor.constraint(equalTo: container.topAnchor, constant: 28),
+            root.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -28),
+            root.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -28),
+            globalRefreshField.widthAnchor.constraint(equalToConstant: 72)
         ])
 
         return container
+    }
+
+    private func buildFeedsPane() -> NSView {
+        let container = NSView()
+        let root = NSStackView()
+        root.orientation = .horizontal
+        root.alignment = .top
+        root.spacing = 14
+        root.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(root)
+
+        let listPane = NSStackView()
+        listPane.orientation = .vertical
+        listPane.spacing = 10
+        listPane.addArrangedSubview(buildFeedHeader())
+        listPane.addArrangedSubview(buildFeedTable())
+        listPane.addArrangedSubview(buildFeedControls())
+        listPane.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let editorPane = buildEditor()
+        editorPane.setContentHuggingPriority(.required, for: .horizontal)
+
+        root.addArrangedSubview(listPane)
+        root.addArrangedSubview(editorPane)
+
+        NSLayoutConstraint.activate([
+            root.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 18),
+            root.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -18),
+            root.topAnchor.constraint(equalTo: container.topAnchor, constant: 18),
+            root.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -18),
+            listPane.widthAnchor.constraint(greaterThanOrEqualToConstant: 500),
+            editorPane.widthAnchor.constraint(equalToConstant: 320)
+        ])
+
+        return container
+    }
+
+    private func buildFeedHeader() -> NSView {
+        let title = NSTextField(labelWithString: "Feeds")
+        title.font = NSFont.boldSystemFont(ofSize: 17)
+        return title
     }
 
     private func buildFeedTable() -> NSScrollView {
@@ -92,9 +171,9 @@ final class PreferencesWindowController: NSWindowController {
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
 
-        tableView.addTableColumn(column("name", title: "Name", width: 240, minWidth: 160))
-        tableView.addTableColumn(column("url", title: "URL", width: 500, minWidth: 260))
-        tableView.addTableColumn(column("refresh", title: "Refresh", width: 90, minWidth: 80))
+        tableView.addTableColumn(column("name", title: "Name", width: 220, minWidth: 160))
+        tableView.addTableColumn(column("url", title: "URL", width: 360, minWidth: 240))
+        tableView.addTableColumn(column("refresh", title: "Refresh", width: 80, minWidth: 72))
         tableView.usesAlternatingRowBackgroundColors = true
         tableView.rowHeight = 30
         tableView.delegate = self
@@ -102,7 +181,7 @@ final class PreferencesWindowController: NSWindowController {
         tableView.target = self
         tableView.action = #selector(selectionChanged)
         scroll.documentView = tableView
-        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 250).isActive = true
+        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 360).isActive = true
         return scroll
     }
 
@@ -145,37 +224,45 @@ final class PreferencesWindowController: NSWindowController {
 
     private func buildEditor() -> NSView {
         let container = NSView()
-        let form = NSGridView()
-        form.translatesAutoresizingMaskIntoConstraints = false
-        form.rowSpacing = 12
-        form.columnSpacing = 12
+        let root = NSStackView()
+        root.orientation = .vertical
+        root.alignment = .leading
+        root.spacing = 12
+        root.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(root)
+
+        let title = NSTextField(labelWithString: "Selected Feed")
+        title.font = NSFont.boldSystemFont(ofSize: 15)
 
         nameField.placeholderString = "Use feed title"
         urlField.placeholderString = "https://example.com/feed.xml"
         refreshField.placeholderString = "Use global"
         [nameField, urlField, refreshField].forEach(configureSingleLineField)
 
-        form.addRow(with: [label("Feed name"), nameField])
-        form.addRow(with: [label("Feed URL"), urlField])
-        form.addRow(with: [label("Refresh override (min)"), refreshField])
+        let form = NSGridView()
+        form.rowSpacing = 10
+        form.columnSpacing = 10
+        form.addRow(with: [label("Name"), nameField])
+        form.addRow(with: [label("URL"), urlField])
+        form.addRow(with: [label("Refresh (min)"), refreshField])
         form.column(at: 0).xPlacement = .trailing
         form.column(at: 1).xPlacement = .fill
 
-        let saveButton = NSButton(title: "Save", target: self, action: #selector(save))
+        let saveButton = NSButton(title: "Save Feed", target: self, action: #selector(saveFeed))
         saveButton.bezelStyle = .rounded
 
-        container.addSubview(form)
-        container.addSubview(saveButton)
-        saveButton.translatesAutoresizingMaskIntoConstraints = false
+        root.addArrangedSubview(title)
+        root.addArrangedSubview(form)
+        root.addArrangedSubview(saveButton)
 
         NSLayoutConstraint.activate([
-            form.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 24),
-            form.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -24),
-            form.topAnchor.constraint(equalTo: container.topAnchor, constant: 24),
-            nameField.widthAnchor.constraint(greaterThanOrEqualToConstant: 360),
-            urlField.widthAnchor.constraint(greaterThanOrEqualToConstant: 360),
-            saveButton.trailingAnchor.constraint(equalTo: form.trailingAnchor),
-            saveButton.topAnchor.constraint(equalTo: form.bottomAnchor, constant: 20)
+            root.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 4),
+            root.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -4),
+            root.topAnchor.constraint(equalTo: container.topAnchor, constant: 28),
+            root.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -4),
+            nameField.widthAnchor.constraint(greaterThanOrEqualToConstant: 190),
+            urlField.widthAnchor.constraint(greaterThanOrEqualToConstant: 190),
+            refreshField.widthAnchor.constraint(equalToConstant: 96)
         ])
         return container
     }
@@ -191,6 +278,13 @@ final class PreferencesWindowController: NSWindowController {
         let label = NSTextField(labelWithString: title)
         label.alignment = .right
         return label
+    }
+
+    private func reloadGeneralSettings() {
+        globalRefreshField.stringValue = "\(store.globalRefreshMinutes)"
+        launchAtLoginButton.state = store.launchAtLogin ? .on : .off
+        notificationsButton.state = store.notificationsEnabled ? .on : .off
+        statusHighlightButton.state = store.highlightUnreadInStatusItem ? .on : .off
     }
 
     private func reloadSelection() {
@@ -235,6 +329,8 @@ final class PreferencesWindowController: NSWindowController {
         tableView.reloadData()
         tableView.selectRowIndexes(IndexSet(integer: max(0, store.feeds.count - 1)), byExtendingSelection: false)
         reloadSelection()
+        tabView.selectTabViewItem(withIdentifier: TabID.feeds)
+        focusURLField()
     }
 
     @objc private func removeFeed() {
@@ -259,22 +355,54 @@ final class PreferencesWindowController: NSWindowController {
         tableView.selectRowIndexes(IndexSet(integer: row + 1), byExtendingSelection: false)
     }
 
-    @objc private func save() {
+    @objc private func saveGeneralSettings() {
         let globalMinutes = Int(globalRefreshField.stringValue) ?? store.globalRefreshMinutes
+        let launchAtLogin = launchAtLoginButton.state == .on
+        guard updateLaunchAtLogin(enabled: launchAtLogin) else { return }
+
+        store.updateGeneral(
+            globalRefreshMinutes: globalMinutes,
+            launchAtLogin: launchAtLogin,
+            notificationsEnabled: notificationsButton.state == .on,
+            highlightUnreadInStatusItem: statusHighlightButton.state == .on
+        )
+    }
+
+    @objc private func saveFeed() {
         let name = nameField.stringValue
         let urlString = urlField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let override = Int(refreshField.stringValue)
 
-        var updatedFeed = selectedFeed
-        if var feed = updatedFeed, let url = URL(string: urlString), !urlString.isEmpty {
-            feed.name = name
-            feed.url = url
-            feed.refreshMinutes = override.flatMap { $0 > 0 ? $0 : nil }
-            updatedFeed = feed
-        }
+        guard var feed = selectedFeed, let url = URL(string: urlString), !urlString.isEmpty else { return }
+        feed.name = name
+        feed.url = url
+        feed.refreshMinutes = override.flatMap { $0 > 0 ? $0 : nil }
 
-        store.update(globalRefreshMinutes: globalMinutes, feed: updatedFeed)
+        store.updateFeed(feed)
         tableView.reloadData()
+    }
+
+    private func focusURLField() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.window?.makeFirstResponder(self.urlField)
+            self.urlField.currentEditor()?.selectAll(nil)
+        }
+    }
+
+    private func updateLaunchAtLogin(enabled: Bool) -> Bool {
+        do {
+            if enabled, SMAppService.mainApp.status != .enabled {
+                try SMAppService.mainApp.register()
+            } else if !enabled, SMAppService.mainApp.status == .enabled {
+                try SMAppService.mainApp.unregister()
+            }
+            return true
+        } catch {
+            presentError(error)
+            reloadGeneralSettings()
+            return false
+        }
     }
 }
 
@@ -306,10 +434,12 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
         }
 
         let feed = store.feeds[row]
+        label.textColor = .labelColor
         switch tableColumn.identifier.rawValue {
         case "name":
             label.font = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
             label.alignment = .left
+            label.lineBreakMode = .byTruncatingTail
             label.stringValue = feed.displayName
         case "url":
             label.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
@@ -320,6 +450,7 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
         case "refresh":
             label.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
             label.alignment = .right
+            label.lineBreakMode = .byTruncatingTail
             label.stringValue = feed.refreshMinutes.map { "\($0)m" } ?? "\(store.globalRefreshMinutes)m"
         default:
             label.stringValue = ""
