@@ -35,7 +35,7 @@ final class PreferencesWindowController: NSWindowController {
     private let globalMarkAllUnreadButton = NSButton(checkboxWithTitle: "Mark all unread", target: nil, action: nil)
     private let globalShowAllUnreadButton = NSButton(checkboxWithTitle: "Show all unread", target: nil, action: nil)
     private let feedCountLabel = NSTextField(labelWithString: "")
-    private var selectedItemID: UUID?
+    private var selectedItemIDs: [UUID] = []
     private var storeObserverID: UUID?
 
     init(store: FeedStore) {
@@ -301,6 +301,7 @@ final class PreferencesWindowController: NSWindowController {
         tableView.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.28)
         tableView.usesAlternatingRowBackgroundColors = true
         tableView.rowHeight = 30
+        tableView.allowsMultipleSelection = true
         tableView.delegate = self
         tableView.dataSource = self
         tableView.target = self
@@ -399,12 +400,14 @@ final class PreferencesWindowController: NSWindowController {
         let feedText = "\(store.feeds.count) \(store.feeds.count == 1 ? "feed" : "feeds")"
         feedCountLabel.stringValue = separatorCount == 0 ? feedText : "\(feedText), \(separatorCount) \(separatorCount == 1 ? "separator" : "separators")"
 
-        if let selectedItemID,
-                  let row = store.items.firstIndex(where: { $0.id == selectedItemID }),
-                  tableView.selectedRow != row {
-            tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-        } else if selectedItemID != nil {
-            selectedItemID = nil
+        let selectedRows = IndexSet(selectedItemIDs.compactMap { selectedItemID in
+            store.items.firstIndex { $0.id == selectedItemID }
+        })
+
+        if !selectedRows.isEmpty, tableView.selectedRowIndexes != selectedRows {
+            tableView.selectRowIndexes(selectedRows, byExtendingSelection: false)
+        } else if selectedRows.isEmpty, !selectedItemIDs.isEmpty {
+            selectedItemIDs = []
             tableView.deselectAll(nil)
         }
 
@@ -412,27 +415,28 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     private func updateFeedControls() {
-        let row = tableView.selectedRow
-        let hasSelection = store.items.indices.contains(row)
+        let selectedRows = tableView.selectedRowIndexes.filter { store.items.indices.contains($0) }
+        let hasSelection = !selectedRows.isEmpty
         removeItemButton.isEnabled = hasSelection
-        moveUpButton.isEnabled = hasSelection && row > 0
-        moveDownButton.isEnabled = hasSelection && row < store.items.count - 1
+        moveUpButton.isEnabled = hasSelection && (selectedRows.first ?? 0) > 0
+        moveDownButton.isEnabled = hasSelection && (selectedRows.last ?? 0) < store.items.count - 1
     }
 
     private var selectedFeed: Feed? {
-        guard let selectedItemID else { return nil }
+        guard selectedItemIDs.count == 1, let selectedItemID = selectedItemIDs.first else { return nil }
         return store.feeds.first { $0.id == selectedItemID }
     }
 
     private func syncSelectionFromTable() {
-        let row = tableView.selectedRow
-        selectedItemID = store.items.indices.contains(row) ? store.items[row].id : nil
+        selectedItemIDs = tableView.selectedRowIndexes
+            .filter { store.items.indices.contains($0) }
+            .map { store.items[$0].id }
         reloadSelection()
     }
 
     @objc private func addFeed() {
         store.addFeed(url: URL(string: "https://example.com/feed.xml")!)
-        selectedItemID = store.items.last?.id
+        selectedItemIDs = store.items.last.map { [$0.id] } ?? []
         tableView.reloadData()
         tableView.selectRowIndexes(IndexSet(integer: max(0, store.items.count - 1)), byExtendingSelection: false)
         reloadSelection()
@@ -442,7 +446,7 @@ final class PreferencesWindowController: NSWindowController {
 
     @objc private func addSeparator() {
         store.addSeparator()
-        selectedItemID = store.items.last?.id
+        selectedItemIDs = store.items.last.map { [$0.id] } ?? []
         tableView.reloadData()
         tableView.selectRowIndexes(IndexSet(integer: max(0, store.items.count - 1)), byExtendingSelection: false)
         reloadSelection()
@@ -451,30 +455,34 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     @objc private func removeSelectedItem() {
-        let row = tableView.selectedRow
-        guard store.items.indices.contains(row) else { return }
-        let removedID = store.items[row].id
-        let nextSelectionIndex = min(row, store.items.count - 2)
-        store.removeItem(id: removedID)
-        selectedItemID = store.items.indices.contains(nextSelectionIndex) ? store.items[nextSelectionIndex].id : nil
+        let selectedRows = tableView.selectedRowIndexes.filter { store.items.indices.contains($0) }
+        guard !selectedRows.isEmpty else { return }
+
+        let firstRemovedRow = selectedRows.first ?? 0
+        let removedIDs = Set(selectedRows.map { store.items[$0].id })
+        let nextSelectionIndex = min(firstRemovedRow, store.items.count - selectedRows.count - 1)
+        store.removeItems(ids: removedIDs)
+        selectedItemIDs = store.items.indices.contains(nextSelectionIndex) ? [store.items[nextSelectionIndex].id] : []
         tableView.reloadData()
         reloadSelection()
     }
 
     @objc private func moveFeedUp() {
-        let row = tableView.selectedRow
-        guard row > 0 else { return }
-        store.moveItem(from: row, to: row - 1)
-        selectedItemID = store.items[row - 1].id
-        tableView.selectRowIndexes(IndexSet(integer: row - 1), byExtendingSelection: false)
+        let selectedRows = tableView.selectedRowIndexes.filter { store.items.indices.contains($0) }
+        guard let firstSelectedRow = selectedRows.first, firstSelectedRow > 0 else { return }
+        selectedItemIDs = selectedRows.map { store.items[$0].id }
+        guard let insertionIndex = store.moveItems(at: IndexSet(selectedRows), to: firstSelectedRow - 1) else { return }
+        tableView.reloadData()
+        tableView.selectRowIndexes(IndexSet(integersIn: insertionIndex..<(insertionIndex + selectedRows.count)), byExtendingSelection: false)
     }
 
     @objc private func moveFeedDown() {
-        let row = tableView.selectedRow
-        guard row >= 0, row < store.items.count - 1 else { return }
-        store.moveItem(from: row, to: row + 1)
-        selectedItemID = store.items[row + 1].id
-        tableView.selectRowIndexes(IndexSet(integer: row + 1), byExtendingSelection: false)
+        let selectedRows = tableView.selectedRowIndexes.filter { store.items.indices.contains($0) }
+        guard let lastSelectedRow = selectedRows.last, lastSelectedRow < store.items.count - 1 else { return }
+        selectedItemIDs = selectedRows.map { store.items[$0].id }
+        guard let insertionIndex = store.moveItems(at: IndexSet(selectedRows), to: lastSelectedRow + 2) else { return }
+        tableView.reloadData()
+        tableView.selectRowIndexes(IndexSet(integersIn: insertionIndex..<(insertionIndex + selectedRows.count)), byExtendingSelection: false)
     }
 
     @objc private func applyGeneralSettingsFromControl() {
@@ -535,8 +543,37 @@ final class PreferencesWindowController: NSWindowController {
         let column = tableView.column(for: field)
         guard store.items.indices.contains(row), column >= 0 else { return false }
 
-        if tableView.selectedRow != row {
+        let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if modifierFlags.contains(.command) {
+            var selectedRows = tableView.selectedRowIndexes
+            if selectedRows.contains(row) {
+                selectedRows.remove(row)
+            } else {
+                selectedRows.insert(row)
+            }
+            tableView.selectRowIndexes(selectedRows, byExtendingSelection: false)
+            syncSelectionFromTable()
+            return true
+        }
+
+        if modifierFlags.contains(.shift) {
+            let anchorRow = tableView.selectedRow >= 0 ? tableView.selectedRow : row
+            let rangeStart = min(anchorRow, row)
+            let rangeEnd = max(anchorRow, row)
+            let range = rangeStart..<(rangeEnd + 1)
+            tableView.selectRowIndexes(IndexSet(integersIn: range), byExtendingSelection: false)
+            syncSelectionFromTable()
+            return true
+        }
+
+        if !tableView.selectedRowIndexes.contains(row) {
             tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            syncSelectionFromTable()
+            return true
+        }
+
+        if tableView.selectedRowIndexes.count > 1 {
+            tableView.mouseDown(with: event)
             syncSelectionFromTable()
             return true
         }
@@ -746,18 +783,25 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
         row: Int,
         dropOperation: NSTableView.DropOperation
     ) -> Bool {
-        guard let idString = info.draggingPasteboard.string(forType: feedRowPasteboardType),
-              let id = UUID(uuidString: idString),
-              let source = store.items.firstIndex(where: { $0.id == id }) else { return false }
+        let draggedIDs = info.draggingPasteboard.pasteboardItems?
+            .compactMap { item -> UUID? in
+                guard let idString = item.string(forType: feedRowPasteboardType) else { return nil }
+                return UUID(uuidString: idString)
+            } ?? []
+        guard !draggedIDs.isEmpty else { return false }
+
+        let sourceIndexes = draggedIDs.compactMap { draggedID in
+            store.items.firstIndex { $0.id == draggedID }
+        }
+        guard !sourceIndexes.isEmpty else { return false }
 
         let clampedRow = min(max(row, 0), store.items.count)
-        let destination = source < clampedRow ? clampedRow - 1 : clampedRow
-        guard store.items.indices.contains(destination), source != destination else { return false }
+        let draggedItemIDs = sourceIndexes.sorted().map { store.items[$0].id }
+        guard let insertionIndex = store.moveItems(at: IndexSet(sourceIndexes), to: clampedRow) else { return false }
 
-        store.moveItem(from: source, to: destination)
-        selectedItemID = id
+        selectedItemIDs = draggedItemIDs
         tableView.reloadData()
-        tableView.selectRowIndexes(IndexSet(integer: destination), byExtendingSelection: false)
+        tableView.selectRowIndexes(IndexSet(integersIn: insertionIndex..<(insertionIndex + draggedItemIDs.count)), byExtendingSelection: false)
         reloadSelection()
         return true
     }
@@ -829,7 +873,7 @@ extension PreferencesWindowController: NSTextFieldDelegate {
                 return
             }
             separator.title = value == separator.displayName ? "" : value
-            selectedItemID = separator.id
+            selectedItemIDs = [separator.id]
             store.updateSeparator(separator)
             tableView.reloadData()
             return
@@ -859,7 +903,7 @@ extension PreferencesWindowController: NSTextFieldDelegate {
             return
         }
 
-        selectedItemID = feed.id
+        selectedItemIDs = [feed.id]
         store.updateFeed(feed)
         tableView.reloadData()
     }

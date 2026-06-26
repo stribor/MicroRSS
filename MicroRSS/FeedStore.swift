@@ -146,11 +146,37 @@ final class FeedStore {
         save()
     }
 
+    func removeItems(ids: Set<UUID>) {
+        items.removeAll { ids.contains($0.id) }
+        save()
+    }
+
     func moveItem(from source: Int, to destination: Int) {
         guard items.indices.contains(source), items.indices.contains(destination), source != destination else { return }
         let item = items.remove(at: source)
         items.insert(item, at: destination)
         save()
+    }
+
+    @discardableResult
+    func moveItems(at sourceIndexes: IndexSet, to destination: Int) -> Int? {
+        let sources = sourceIndexes.filter { items.indices.contains($0) }
+        guard !sources.isEmpty else { return nil }
+
+        let movingItems = sources.map { items[$0] }
+        var reorderedItems = items
+        for source in sources.reversed() {
+            reorderedItems.remove(at: source)
+        }
+
+        let removedBeforeDestination = sources.filter { $0 < destination }.count
+        let insertionIndex = min(max(destination - removedBeforeDestination, 0), reorderedItems.count)
+        reorderedItems.insert(contentsOf: movingItems, at: insertionIndex)
+        guard reorderedItems != items else { return nil }
+
+        items = reorderedItems
+        save()
+        return insertionIndex
     }
 
     func moveFeed(from source: Int, to destination: Int) {
