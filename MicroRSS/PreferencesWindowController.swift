@@ -304,7 +304,6 @@ final class PreferencesWindowController: NSWindowController {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.target = self
-        tableView.action = #selector(selectionChanged)
         tableView.doubleAction = #selector(editClickedFeedCell)
         tableView.registerForDraggedTypes([feedRowPasteboardType])
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
@@ -425,7 +424,7 @@ final class PreferencesWindowController: NSWindowController {
         return store.feeds.first { $0.id == selectedItemID }
     }
 
-    @objc private func selectionChanged() {
+    private func syncSelectionFromTable() {
         let row = tableView.selectedRow
         selectedItemID = store.items.indices.contains(row) ? store.items[row].id : nil
         reloadSelection()
@@ -537,9 +536,8 @@ final class PreferencesWindowController: NSWindowController {
         guard store.items.indices.contains(row), column >= 0 else { return false }
 
         if tableView.selectedRow != row {
-            selectedItemID = store.items[row].id
             tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-            updateFeedControls()
+            syncSelectionFromTable()
             return true
         }
 
@@ -719,6 +717,10 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
             label.stringValue = ""
         }
         return cell
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        syncSelectionFromTable()
     }
 
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
