@@ -173,7 +173,6 @@
 				ENABLE_TESTABILITY = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				ONLY_ACTIVE_ARCH = YES;
-				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -183,9 +182,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				SDKROOT = macosx;
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_OPTIMIZATION_LEVEL = "-Osize";
 			};
 			name = Release;
 		};
@@ -193,8 +189,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 2RJGJFQNA5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MicroRSS/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.news";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -209,8 +207,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 2RJGJFQNA5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MicroRSS/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.news";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
