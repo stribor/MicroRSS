@@ -42,14 +42,15 @@ final class PreferencesWindowController: NSWindowController {
         self.store = store
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 620),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "MicroRSS Settings"
         window.minSize = NSSize(width: 760, height: 560)
-        window.toolbarStyle = .expanded
+        window.toolbarStyle = .unified
         super.init(window: window)
+        configureWindowBackground()
         configureToolbar()
         buildUI()
         configureGeneralActions()
@@ -87,8 +88,26 @@ final class PreferencesWindowController: NSWindowController {
         window?.toolbar?.selectedItemIdentifier = ToolbarID.feeds
     }
 
+    private func configureWindowBackground() {
+        guard let window else { return }
+
+        let effectView = NSVisualEffectView(frame: window.contentView?.bounds ?? .zero)
+        effectView.autoresizingMask = [.width, .height]
+        effectView.blendingMode = .behindWindow
+        effectView.material = .hudWindow
+        effectView.state = .active
+        effectView.isEmphasized = true
+
+        window.appearance = NSAppearance(named: .vibrantDark)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.titlebarAppearsTransparent = true
+        window.contentView = effectView
+        window.isMovableByWindowBackground = true
+    }
+
     private func buildUI() {
-        guard let content = window?.contentView else { return }
+        guard let content = settingsContentView else { return }
 
         tabView.tabViewType = .noTabsNoBorder
         tabView.translatesAutoresizingMaskIntoConstraints = false
@@ -97,7 +116,7 @@ final class PreferencesWindowController: NSWindowController {
         NSLayoutConstraint.activate([
             tabView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             tabView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            tabView.topAnchor.constraint(equalTo: content.topAnchor),
+            tabView.topAnchor.constraint(equalTo: content.safeAreaLayoutGuide.topAnchor),
             tabView.bottomAnchor.constraint(equalTo: content.bottomAnchor)
         ])
 
@@ -105,6 +124,10 @@ final class PreferencesWindowController: NSWindowController {
         tabView.addTabViewItem(tabItem(identifier: TabID.general, label: "General", view: buildGeneralPane()))
         tabView.addTabViewItem(tabItem(identifier: TabID.about, label: "About", view: buildAboutPane()))
         tabView.selectTabViewItem(withIdentifier: TabID.feeds)
+    }
+
+    private var settingsContentView: NSView? {
+        return window?.contentView
     }
 
     private func tabItem(identifier: String, label: String, view: NSView) -> NSTabViewItem {
@@ -270,10 +293,12 @@ final class PreferencesWindowController: NSWindowController {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
+        scroll.drawsBackground = false
 
         tableView.addTableColumn(column("name", title: "Name", width: 230, minWidth: 160))
         tableView.addTableColumn(column("url", title: "URL", width: 520, minWidth: 260))
         tableView.addTableColumn(column("refresh", title: "Refresh", width: 90, minWidth: 72))
+        tableView.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.28)
         tableView.usesAlternatingRowBackgroundColors = true
         tableView.rowHeight = 30
         tableView.delegate = self
