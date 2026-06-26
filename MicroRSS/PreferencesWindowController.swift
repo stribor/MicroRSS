@@ -280,6 +280,7 @@ final class PreferencesWindowController: NSWindowController {
         tableView.dataSource = self
         tableView.target = self
         tableView.action = #selector(selectionChanged)
+        tableView.doubleAction = #selector(editClickedFeedCell)
         tableView.registerForDraggedTypes([feedRowPasteboardType])
         tableView.setDraggingSourceOperationMask(.move, forLocal: true)
         scroll.documentView = tableView
@@ -496,6 +497,46 @@ final class PreferencesWindowController: NSWindowController {
         }
     }
 
+    @objc private func editClickedFeedCell() {
+        let row = tableView.clickedRow
+        let column = tableView.clickedColumn
+        guard canEditCell(row: row, column: column) else { return }
+        tableView.editColumn(column, row: row, with: nil, select: true)
+    }
+
+    private func handleCellMouseDown(field: NSTextField, event: NSEvent) -> Bool {
+        guard field.currentEditor() == nil else { return false }
+
+        let row = tableView.row(for: field)
+        let column = tableView.column(for: field)
+        guard store.items.indices.contains(row), column >= 0 else { return false }
+
+        if tableView.selectedRow != row {
+            selectedItemID = store.items[row].id
+            tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            updateFeedControls()
+            return true
+        }
+
+        if canEditCell(row: row, column: column) {
+            tableView.editColumn(column, row: row, with: event, select: false)
+            return true
+        }
+
+        return true
+    }
+
+    private func canEditCell(row: Int, column: Int) -> Bool {
+        guard store.items.indices.contains(row), tableView.tableColumns.indices.contains(column) else { return false }
+        let identifier = tableView.tableColumns[column].identifier.rawValue
+        switch store.items[row] {
+        case .feed:
+            return identifier == "name" || identifier == "url" || identifier == "refresh"
+        case .separator:
+            return identifier == "name"
+        }
+    }
+
     private func updateLaunchAtLogin(enabled: Bool) -> Bool {
         do {
             if enabled, SMAppService.mainApp.status != .enabled {
@@ -528,7 +569,7 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
         if let existing = cell.textField {
             label = existing
         } else {
-            label = NSTextField(string: "")
+            label = SelectThenEditTextField(string: "")
             label.translatesAutoresizingMaskIntoConstraints = false
             label.isBordered = false
             label.drawsBackground = false
@@ -564,6 +605,12 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
                     label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
                     label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
                 ])
+            }
+        }
+
+        if let label = label as? SelectThenEditTextField {
+            label.mouseDownHandler = { [weak self] field, event in
+                self?.handleCellMouseDown(field: field, event: event) ?? false
             }
         }
 
@@ -801,4 +848,15 @@ private func refreshMinutes(from value: String) -> Int? {
     if trimmed.caseInsensitiveCompare("off") == .orderedSame { return 0 }
     guard let minutes = Int(trimmed) else { return nil }
     return minutes >= 0 ? minutes : nil
+}
+
+private final class SelectThenEditTextField: NSTextField {
+    var mouseDownHandler: ((NSTextField, NSEvent) -> Bool)?
+
+    override func mouseDown(with event: NSEvent) {
+        if mouseDownHandler?(self, event) == true {
+            return
+        }
+        super.mouseDown(with: event)
+    }
 }
