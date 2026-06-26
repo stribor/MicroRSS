@@ -76,15 +76,19 @@ final class StatusMenuController: NSObject {
     private func storyMenuItem(_ story: FeedStory) -> NSMenuItem {
         let item = NSMenuItem(title: story.title, action: nil, keyEquivalent: "")
         let submenu = NSMenu()
+        let feed = store.feeds.first { $0.id == story.sourceFeedID }
 
-        let preview = NSMenuItem(title: "Preview", action: #selector(openPreview(_:)), keyEquivalent: "")
-        preview.target = self
-        preview.representedObject = story
+        let preview = NSMenuItem()
+        preview.view = StoryPreviewMenuView(story: story, feed: feed)
         submenu.addItem(preview)
 
         let open = NSMenuItem(title: "Open in Browser", action: #selector(openStory(_:)), keyEquivalent: "")
         open.target = self
-        open.representedObject = story
+        if let feed {
+            open.representedObject = FeedStoryContext(story: story, feed: feed)
+        } else {
+            open.representedObject = story
+        }
         open.isEnabled = story.link != nil
         submenu.addItem(open)
 
@@ -182,17 +186,110 @@ final class StatusMenuController: NSObject {
     }
 
     @objc private func openStory(_ sender: NSMenuItem) {
-        guard let story = sender.representedObject as? FeedStory, let url = story.link else { return }
-        NSWorkspace.shared.open(url)
+        if let context = sender.representedObject as? FeedStoryContext,
+           let url = Self.storyURL(for: context.story, feed: context.feed) {
+            NSWorkspace.shared.open(url)
+        } else if let story = sender.representedObject as? FeedStory, let url = story.link {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+
+    static func storyURL(for story: FeedStory, feed: Feed) -> URL? {
+        guard let link = story.link else { return nil }
+        return link.appendingMissingQueryItems(from: feed.url)
+    }
+
+    static func storyRequest(for story: FeedStory, feed: Feed?) -> URLRequest? {
+        guard let url = feed.flatMap({ storyURL(for: story, feed: $0) }) ?? story.link else { return nil }
+        var request = URLRequest(url: url)
+        if let feed {
+            request.setValue(feed.url.absoluteString, forHTTPHeaderField: "Referer")
+        }
+        return request
     }
 }
 
 extension StatusMenuController: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         previewWindows.removeAll { $0.window === notification.object as? NSWindow }
+    }
+}
+
+private final class StoryPreviewMenuView: NSView {
+    private let story: FeedStory
+    private let feed: Feed?
+    private let webView = WKWebView()
+    private var hasLoaded = false
+
+    init(story: FeedStory, feed: Feed?) {
+        self.story = story
+        self.feed = feed
+        super.init(frame: NSRect(x: 0, y: 0, width: 640, height: 420))
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(webView)
+        NSLayoutConstraint.activate([
+            widthAnchor.constraint(equalToConstant: 640),
+            heightAnchor.constraint(equalToConstant: 420),
+            webView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            webView.topAnchor.constraint(equalTo: topAnchor),
+            webView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil, !hasLoaded else { return }
+        hasLoaded = true
+        if let request = StatusMenuController.storyRequest(for: story, feed: feed) {
+            webView.load(request)
+        } else {
+            webView.loadHTMLString(Self.summaryHTML(for: story), baseURL: nil)
+        }
+    }
+
+    private static func summaryHTML(for story: FeedStory) -> String {
+        """
+        <!doctype html>
+        <html>
+        <head><meta charset="utf-8"><style>body{font: -apple-system-body; margin: 24px; max-width: 560px;} h1{font: -apple-system-title2;}</style></head>
+        <body><h1>\(story.title.escapedHTML)</h1><div>\(story.summary)</div></body>
+        </html>
+        """
+    }
+}
+
+private extension URL {
+    func appendingMissingQueryItems(from sourceURL: URL) -> URL {
+        guard let sourceItems = URLComponents(url: sourceURL, resolvingAgainstBaseURL: false)?.queryItems,
+              !sourceItems.isEmpty,
+              var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
+            return self
+        }
+
+        var items = components.queryItems ?? []
+        let existingNames = Set(items.map(\.name))
+        let missingItems = sourceItems.filter { !existingNames.contains($0.name) }
+        guard !missingItems.isEmpty else { return self }
+        items.append(contentsOf: missingItems)
+        components.queryItems = items
+        return components.url ?? self
+    }
+}
+
+private extension String {
+    var escapedHTML: String {
+        replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
     }
 }

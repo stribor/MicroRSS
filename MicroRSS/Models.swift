@@ -21,3 +21,8 @@ struct FeedStory: Identifiable, Equatable {
     var publishedAt: Date?
     var sourceFeedID: UUID
 }
+
+struct FeedStoryContext {
+    var story: FeedStory
+    var feed: Feed
+}
