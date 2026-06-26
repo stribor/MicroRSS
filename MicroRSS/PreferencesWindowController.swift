@@ -8,19 +8,20 @@ final class PreferencesWindowController: NSWindowController {
     private let nameField = NSTextField()
     private let urlField = NSTextField()
     private let refreshField = NSTextField()
+    private let feedCountLabel = NSTextField(labelWithString: "")
     private var selectedFeedID: UUID?
     private var storeObserverID: UUID?
 
     init(store: FeedStore) {
         self.store = store
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 820, height: 460),
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 560),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "MicroRSS Settings"
-        window.minSize = NSSize(width: 760, height: 420)
+        window.title = "Feeds"
+        window.minSize = NSSize(width: 780, height: 500)
         super.init(window: window)
         buildUI()
         reloadSelection()
@@ -37,80 +38,123 @@ final class PreferencesWindowController: NSWindowController {
     private func buildUI() {
         guard let content = window?.contentView else { return }
 
-        let split = NSSplitView()
-        split.isVertical = true
-        split.dividerStyle = .thin
-        split.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(split)
-
-        let left = NSView()
-        let right = NSView()
-        split.addArrangedSubview(left)
-        split.addArrangedSubview(right)
-
-        buildFeedList(in: left)
-        buildEditor(in: right)
-        left.widthAnchor.constraint(greaterThanOrEqualToConstant: 320).isActive = true
-        right.widthAnchor.constraint(greaterThanOrEqualToConstant: 400).isActive = true
+        let root = NSStackView()
+        root.orientation = .vertical
+        root.spacing = 12
+        root.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(root)
 
         NSLayoutConstraint.activate([
-            split.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            split.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            split.topAnchor.constraint(equalTo: content.topAnchor),
-            split.bottomAnchor.constraint(equalTo: content.bottomAnchor)
+            root.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 18),
+            root.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -18),
+            root.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
+            root.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16)
         ])
-        split.setPosition(330, ofDividerAt: 0)
+
+        root.addArrangedSubview(buildHeader())
+        root.addArrangedSubview(buildFeedTable())
+        root.addArrangedSubview(buildFeedControls())
+        root.addArrangedSubview(buildEditor())
     }
 
-    private func buildFeedList(in container: NSView) {
+    private func buildHeader() -> NSView {
+        let container = NSView()
+        let title = NSTextField(labelWithString: "Feeds")
+        title.font = NSFont.boldSystemFont(ofSize: 17)
+
+        globalRefreshField.stringValue = "\(store.globalRefreshMinutes)"
+        configureSingleLineField(globalRefreshField)
+
+        let label = NSTextField(labelWithString: "Global refresh (min)")
+        let stack = NSStackView(views: [label, globalRefreshField])
+        stack.orientation = .horizontal
+        stack.spacing = 8
+
+        title.translatesAutoresizingMaskIntoConstraints = false
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(title)
+        container.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            title.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            globalRefreshField.widthAnchor.constraint(equalToConstant: 72),
+            container.heightAnchor.constraint(equalToConstant: 28)
+        ])
+
+        return container
+    }
+
+    private func buildFeedTable() -> NSScrollView {
         let scroll = NSScrollView()
-        scroll.translatesAutoresizingMaskIntoConstraints = false
         scroll.hasVerticalScroller = true
-        let feedColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("feed"))
-        feedColumn.minWidth = 260
-        feedColumn.width = 300
-        tableView.addTableColumn(feedColumn)
-        tableView.headerView = nil
+        scroll.borderType = .bezelBorder
+
+        tableView.addTableColumn(column("name", title: "Name", width: 240, minWidth: 160))
+        tableView.addTableColumn(column("url", title: "URL", width: 500, minWidth: 260))
+        tableView.addTableColumn(column("refresh", title: "Refresh", width: 90, minWidth: 80))
+        tableView.usesAlternatingRowBackgroundColors = true
+        tableView.rowHeight = 30
         tableView.delegate = self
         tableView.dataSource = self
         tableView.target = self
         tableView.action = #selector(selectionChanged)
         scroll.documentView = tableView
+        scroll.heightAnchor.constraint(greaterThanOrEqualToConstant: 250).isActive = true
+        return scroll
+    }
 
+    private func column(_ identifier: String, title: String, width: CGFloat, minWidth: CGFloat) -> NSTableColumn {
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(identifier))
+        column.title = title
+        column.width = width
+        column.minWidth = minWidth
+        return column
+    }
+
+    private func buildFeedControls() -> NSView {
         let addButton = NSButton(title: "+", target: self, action: #selector(addFeed))
         let removeButton = NSButton(title: "-", target: self, action: #selector(removeFeed))
         let upButton = NSButton(title: "Up", target: self, action: #selector(moveFeedUp))
         let downButton = NSButton(title: "Down", target: self, action: #selector(moveFeedDown))
-        let controls = NSStackView(views: [addButton, removeButton, upButton, downButton])
-        controls.orientation = NSUserInterfaceLayoutOrientation.horizontal
+        let spacer = NSView()
+
+        feedCountLabel.font = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
+        feedCountLabel.alignment = .center
+
+        let controls = NSStackView(views: [addButton, removeButton, upButton, downButton, spacer, feedCountLabel])
+        controls.orientation = .horizontal
         controls.spacing = 8
         controls.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        feedCountLabel.setContentHuggingPriority(.required, for: .horizontal)
 
-        container.addSubview(scroll)
+        let container = NSView()
         container.addSubview(controls)
         NSLayoutConstraint.activate([
-            scroll.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-            scroll.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-            scroll.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
-            scroll.bottomAnchor.constraint(equalTo: controls.topAnchor, constant: -12),
-            controls.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-            controls.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12)
+            controls.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            controls.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            controls.topAnchor.constraint(equalTo: container.topAnchor),
+            controls.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            container.heightAnchor.constraint(equalToConstant: 32)
         ])
+        return container
     }
 
-    private func buildEditor(in container: NSView) {
+    private func buildEditor() -> NSView {
+        let container = NSView()
         let form = NSGridView()
         form.translatesAutoresizingMaskIntoConstraints = false
         form.rowSpacing = 12
         form.columnSpacing = 12
 
-        globalRefreshField.stringValue = "\(store.globalRefreshMinutes)"
         nameField.placeholderString = "Use feed title"
         urlField.placeholderString = "https://example.com/feed.xml"
         refreshField.placeholderString = "Use global"
-        [globalRefreshField, nameField, urlField, refreshField].forEach(configureSingleLineField)
+        [nameField, urlField, refreshField].forEach(configureSingleLineField)
 
-        form.addRow(with: [label("Global refresh (min)"), globalRefreshField])
         form.addRow(with: [label("Feed name"), nameField])
         form.addRow(with: [label("Feed URL"), urlField])
         form.addRow(with: [label("Refresh override (min)"), refreshField])
@@ -133,6 +177,7 @@ final class PreferencesWindowController: NSWindowController {
             saveButton.trailingAnchor.constraint(equalTo: form.trailingAnchor),
             saveButton.topAnchor.constraint(equalTo: form.bottomAnchor, constant: 20)
         ])
+        return container
     }
 
     private func configureSingleLineField(_ field: NSTextField) {
@@ -149,9 +194,15 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     private func reloadSelection() {
+        feedCountLabel.stringValue = "\(store.feeds.count) \(store.feeds.count == 1 ? "feed" : "feeds")"
+
         if selectedFeedID == nil, let first = store.feeds.first {
             selectedFeedID = first.id
             tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        } else if let selectedFeedID,
+                  let row = store.feeds.firstIndex(where: { $0.id == selectedFeedID }),
+                  tableView.selectedRow != row {
+            tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         }
 
         guard let feed = selectedFeed else {
@@ -233,8 +284,8 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard store.feeds.indices.contains(row) else { return nil }
-        let identifier = NSUserInterfaceItemIdentifier("FeedCell")
+        guard store.feeds.indices.contains(row), let tableColumn else { return nil }
+        let identifier = NSUserInterfaceItemIdentifier("FeedCell-\(tableColumn.identifier.rawValue)")
         let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? NSTableCellView()
         cell.identifier = identifier
 
@@ -244,6 +295,7 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
         } else {
             label = NSTextField(labelWithString: "")
             label.translatesAutoresizingMaskIntoConstraints = false
+            label.lineBreakMode = .byTruncatingTail
             cell.addSubview(label)
             cell.textField = label
             NSLayoutConstraint.activate([
@@ -253,7 +305,25 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
             ])
         }
 
-        label.stringValue = store.feeds[row].displayName
+        let feed = store.feeds[row]
+        switch tableColumn.identifier.rawValue {
+        case "name":
+            label.font = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
+            label.alignment = .left
+            label.stringValue = feed.displayName
+        case "url":
+            label.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            label.alignment = .left
+            label.lineBreakMode = .byTruncatingMiddle
+            label.textColor = .secondaryLabelColor
+            label.stringValue = feed.url.absoluteString
+        case "refresh":
+            label.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+            label.alignment = .right
+            label.stringValue = feed.refreshMinutes.map { "\($0)m" } ?? "\(store.globalRefreshMinutes)m"
+        default:
+            label.stringValue = ""
+        }
         return cell
     }
 }
