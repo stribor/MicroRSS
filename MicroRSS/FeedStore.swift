@@ -165,26 +165,30 @@ final class FeedStore {
         stories.filter { !isStoryRead($0) }
     }
 
-    func markStory(_ story: FeedStory, read: Bool) {
+    func markStory(_ story: FeedStory, read: Bool, notifyObservers: Bool = true) {
         let id = readID(for: story)
+        let changed: Bool
         if read {
-            readStoryIDs.insert(id)
+            changed = readStoryIDs.insert(id).inserted
         } else {
-            readStoryIDs.remove(id)
+            changed = readStoryIDs.remove(id) != nil
         }
-        save()
+        guard changed else { return }
+        save(notifyObservers: notifyObservers)
     }
 
-    func markStories(_ stories: [FeedStory], read: Bool) {
+    func markStories(_ stories: [FeedStory], read: Bool, notifyObservers: Bool = true) {
+        var changed = false
         for story in stories {
             let id = readID(for: story)
             if read {
-                readStoryIDs.insert(id)
+                changed = readStoryIDs.insert(id).inserted || changed
             } else {
-                readStoryIDs.remove(id)
+                changed = (readStoryIDs.remove(id) != nil) || changed
             }
         }
-        save()
+        guard changed else { return }
+        save(notifyObservers: notifyObservers)
     }
 
     @discardableResult
@@ -198,7 +202,7 @@ final class FeedStore {
         observers[id] = nil
     }
 
-    private func save() {
+    private func save(notifyObservers: Bool = true) {
         let state = StoredState(
             globalRefreshMinutes: globalRefreshMinutes,
             feeds: feeds,
@@ -218,7 +222,9 @@ final class FeedStore {
         if let data = try? JSONEncoder().encode(state) {
             defaults.set(data, forKey: key)
         }
-        observers.values.forEach { $0() }
+        if notifyObservers {
+            observers.values.forEach { $0() }
+        }
     }
 
     private func readID(for story: FeedStory) -> String {

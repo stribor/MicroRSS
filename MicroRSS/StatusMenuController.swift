@@ -220,7 +220,9 @@ final class StatusMenuController: NSObject {
         item.state = store.isStoryRead(story) ? .off : .on
 
         let preview = NSMenuItem()
-        preview.view = StoryPreviewMenuView(story: story, feed: feed)
+        preview.view = StoryPreviewMenuView(story: story, feed: feed) { [weak self] story in
+            self?.markStoryReadFromPreview(story)
+        }
         submenu.addItem(preview)
 
         let previewWindow = NSMenuItem(title: "Open Preview Window", action: #selector(openPreview(_:)), keyEquivalent: "")
@@ -353,6 +355,11 @@ final class StatusMenuController: NSObject {
         return storiesByFeed[id] ?? []
     }
 
+    private func markStoryReadFromPreview(_ story: FeedStory) {
+        store.markStory(story, read: true, notifyObservers: false)
+        updateStatusItem()
+    }
+
     @objc private func openSettings() {
         if preferencesWindowController == nil {
             preferencesWindowController = PreferencesWindowController(store: store)
@@ -432,16 +439,21 @@ extension StatusMenuController: NSWindowDelegate {
 }
 
 private final class StoryPreviewMenuView: NSView {
+    private static let markReadDelay: UInt64 = 3_000_000_000
     private static let previewSize = NSSize(width: 640, height: 420)
 
     private let story: FeedStory
     private let feed: Feed?
+    private let markRead: (FeedStory) -> Void
     private var webView: WKWebView?
     private var didStartLoading = false
+    private var markReadTask: Task<Void, Never>?
+    private var didMarkRead = false
 
-    init(story: FeedStory, feed: Feed?) {
+    init(story: FeedStory, feed: Feed?, markRead: @escaping (FeedStory) -> Void) {
         self.story = story
         self.feed = feed
+        self.markRead = markRead
         super.init(frame: NSRect(origin: .zero, size: Self.previewSize))
     }
 
@@ -472,8 +484,13 @@ private final class StoryPreviewMenuView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard window != nil, !didStartLoading else { return }
+        if window == nil {
+            cancelMarkReadTask()
+            return
+        }
 
+        scheduleMarkRead()
+        guard !didStartLoading else { return }
         didStartLoading = true
         let webView = WKWebView(frame: bounds, configuration: WebPreviewSession.makeConfiguration())
         webView.autoresizingMask = [.width, .height]
@@ -485,6 +502,25 @@ private final class StoryPreviewMenuView: NSView {
         } else {
             webView.loadHTMLString(Self.summaryHTML(for: story), baseURL: nil)
         }
+    }
+
+    private func scheduleMarkRead() {
+        guard !didMarkRead, markReadTask == nil else { return }
+        markReadTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: Self.markReadDelay)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self, self.window != nil, !self.didMarkRead else { return }
+                self.didMarkRead = true
+                self.markRead(self.story)
+                self.markReadTask = nil
+            }
+        }
+    }
+
+    private func cancelMarkReadTask() {
+        markReadTask?.cancel()
+        markReadTask = nil
     }
 
     private static func summaryHTML(for story: FeedStory) -> String {
