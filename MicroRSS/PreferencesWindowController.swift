@@ -12,6 +12,7 @@ final class PreferencesWindowController: NSWindowController {
     private enum ToolbarID {
         static let feeds = NSToolbarItem.Identifier("feeds")
         static let general = NSToolbarItem.Identifier("general")
+        static let spring = NSToolbarItem.Identifier("spring")
         static let about = NSToolbarItem.Identifier("about")
     }
 
@@ -579,11 +580,11 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
 
 extension PreferencesWindowController: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.feeds, ToolbarID.general, .flexibleSpace, ToolbarID.about]
+        [ToolbarID.feeds, ToolbarID.general, ToolbarID.spring, ToolbarID.about]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.feeds, ToolbarID.general, ToolbarID.about, .flexibleSpace]
+        [ToolbarID.feeds, ToolbarID.general, ToolbarID.spring, ToolbarID.about]
     }
 
     func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -609,6 +610,11 @@ extension PreferencesWindowController: NSToolbarDelegate {
             item.label = "General"
             item.paletteLabel = "General"
             item.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "General")
+        case ToolbarID.spring:
+            let spacer = NSView(frame: NSRect(x: 0, y: 0, width: 1, height: 1))
+            item.view = spacer
+            item.minSize = NSSize(width: 1, height: 1)
+            item.maxSize = NSSize(width: 10000, height: 1)
         case ToolbarID.about:
             item.label = "About"
             item.paletteLabel = "About"
