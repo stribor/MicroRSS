@@ -11,7 +11,7 @@ final class StatusMenuController: NSObject {
     private var storiesByFeed: [UUID: [FeedStory]] = [:]
     private var refreshTasks: [UUID: Task<Void, Never>] = [:]
     private var preferencesWindowController: PreferencesWindowController?
-    private var previewWindows: [NSWindowController] = []
+    private var previewWindows: [PreviewWindowRecord] = []
     private var storeObserverID: UUID?
     private var updatesPaused = false
 
@@ -229,10 +229,11 @@ final class StatusMenuController: NSObject {
         let previewWindow = NSMenuItem(title: "Open Preview Window", action: #selector(openPreview(_:)), keyEquivalent: "")
         previewWindow.target = self
         if let feed {
-            previewWindow.representedObject = FeedStoryContext(story: story, feed: feed)
+            previewWindow.representedObject = PreviewWindowContext(story: story, feed: feed)
         } else {
-            previewWindow.representedObject = story
+            previewWindow.representedObject = PreviewWindowContext(story: story, feed: nil)
         }
+        previewWindow.state = isPreviewWindowOpen(for: story) ? .on : .off
         previewWindow.isEnabled = story.link != nil
         submenu.addItem(previewWindow)
 
@@ -371,6 +372,8 @@ final class StatusMenuController: NSObject {
         for item in menu.items {
             if let context = item.representedObject as? FeedStoryContext {
                 item.state = store.isStoryRead(context.story) ? .off : .on
+            } else if let context = item.representedObject as? PreviewWindowContext {
+                item.state = isPreviewWindowOpen(for: context.story) ? .on : .off
             } else if let story = item.representedObject as? FeedStory {
                 item.state = store.isStoryRead(story) ? .off : .on
             } else if let id = item.representedObject as? UUID, let stories = storiesByFeed[id] {
@@ -422,19 +425,21 @@ final class StatusMenuController: NSObject {
     }
 
     @objc private func openPreview(_ sender: NSMenuItem) {
-        let controller: PreviewWindowController
-        if let context = sender.representedObject as? FeedStoryContext {
-            store.markStory(context.story, read: true)
-            controller = PreviewWindowController(story: context.story, feed: context.feed)
-        } else if let story = sender.representedObject as? FeedStory {
-            store.markStory(story, read: true)
-            controller = PreviewWindowController(story: story)
-        } else {
+        guard let context = sender.representedObject as? PreviewWindowContext else { return }
+        let key = previewWindowKey(for: context.story)
+        if let existing = previewWindows.first(where: { $0.key == key })?.controller {
+            existing.showWindow(nil)
+            existing.window?.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
             return
         }
-        previewWindows.append(controller)
+
+        store.markStory(context.story, read: true)
+        let controller = PreviewWindowController(story: context.story, feed: context.feed)
+        previewWindows.append(PreviewWindowRecord(key: key, controller: controller))
         controller.window?.delegate = self
         controller.showWindow(nil)
+        updateVisibleMenuItems()
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -480,12 +485,32 @@ final class StatusMenuController: NSObject {
         }
         return request
     }
+
+    private func isPreviewWindowOpen(for story: FeedStory) -> Bool {
+        let key = previewWindowKey(for: story)
+        return previewWindows.contains { $0.key == key }
+    }
+
+    private func previewWindowKey(for story: FeedStory) -> String {
+        "\(story.sourceFeedID.uuidString)|\(story.id)"
+    }
 }
 
 extension StatusMenuController: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
-        previewWindows.removeAll { $0.window === notification.object as? NSWindow }
+        previewWindows.removeAll { $0.controller.window === notification.object as? NSWindow }
+        updateVisibleMenuItems()
     }
+}
+
+private struct PreviewWindowContext {
+    var story: FeedStory
+    var feed: Feed?
+}
+
+private struct PreviewWindowRecord {
+    var key: String
+    var controller: NSWindowController
 }
 
 private final class StoryPreviewMenuView: NSView {
