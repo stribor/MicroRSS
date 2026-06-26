@@ -12,6 +12,7 @@ final class StatusMenuController: NSObject {
     private var preferencesWindowController: PreferencesWindowController?
     private var previewWindows: [NSWindowController] = []
     private var storeObserverID: UUID?
+    private var updatesPaused = false
 
     init(store: FeedStore, service: RSSService) {
         self.store = store
@@ -35,16 +36,43 @@ final class StatusMenuController: NSObject {
     private func rebuildMenu() {
         menu.removeAllItems()
 
+        menu.addItem(generalMenuItem())
+        menu.addItem(.separator())
+
+        let pause = NSMenuItem(title: updatesPaused ? "Resume Updates" : "Pause Updates", action: #selector(toggleUpdatesPaused), keyEquivalent: "")
+        pause.target = self
+        menu.addItem(pause)
+
+        let refreshAll = NSMenuItem(title: "Update all feeds", action: #selector(refreshAllFromMenu), keyEquivalent: "r")
+        refreshAll.target = self
+        refreshAll.isEnabled = !updatesPaused
+        menu.addItem(refreshAll)
+
+        let markAllRead = NSMenuItem(title: "Mark all read", action: #selector(markAllReadFromMenu), keyEquivalent: "")
+        markAllRead.target = self
+        markAllRead.isEnabled = allLoadedStories.contains { !store.isStoryRead($0) }
+        menu.addItem(markAllRead)
+
+        menu.addItem(.separator())
+
+        let feedsBrowser = NSMenuItem(title: "Feeds Browser...", action: #selector(openSettings), keyEquivalent: ",")
+        feedsBrowser.target = self
+        menu.addItem(feedsBrowser)
+        menu.addItem(.separator())
+
         if store.feeds.isEmpty {
             let empty = NSMenuItem(title: "No feeds configured", action: nil, keyEquivalent: "")
             empty.isEnabled = false
             menu.addItem(empty)
         } else {
             for feed in store.feeds {
-                let item = NSMenuItem(title: feed.displayName, action: nil, keyEquivalent: "")
-                let submenu = NSMenu()
                 let stories = storiesByFeed[feed.id] ?? []
+                let unreadCount = store.unreadStories(in: stories).count
+                let item = NSMenuItem(title: feedMenuTitle(feed: feed, unreadCount: unreadCount), action: nil, keyEquivalent: "")
+                let submenu = NSMenu()
 
+                addFeedActions(to: submenu, feed: feed, stories: stories)
+                submenu.addItem(.separator())
                 if stories.isEmpty {
                     let empty = NSMenuItem(title: "No stories loaded", action: nil, keyEquivalent: "")
                     empty.isEnabled = false
@@ -59,24 +87,76 @@ final class StatusMenuController: NSObject {
                 submenu.addItem(NSMenuItem(title: "Refresh Now", action: #selector(refreshFeedFromMenu(_:)), keyEquivalent: ""))
                 submenu.items.last?.target = self
                 submenu.items.last?.representedObject = feed.id
+                submenu.items.last?.isEnabled = !updatesPaused
                 item.submenu = submenu
                 menu.addItem(item)
             }
         }
+    }
 
-        menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Refresh All", action: #selector(refreshAllFromMenu), keyEquivalent: "r"))
-        menu.items.last?.target = self
-        menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
-        menu.items.last?.target = self
-        menu.addItem(NSMenuItem(title: "Quit MicroRSS", action: #selector(quit), keyEquivalent: "q"))
-        menu.items.last?.target = self
+    private var allLoadedStories: [FeedStory] {
+        storiesByFeed.values.flatMap { $0 }
+    }
+
+    private func generalMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "General", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+
+        let about = NSMenuItem(title: "About MicroRSS", action: #selector(showAbout), keyEquivalent: "")
+        about.target = self
+        submenu.addItem(about)
+
+        let preferences = NSMenuItem(title: "Preferences...", action: #selector(openSettings), keyEquivalent: ",")
+        preferences.target = self
+        submenu.addItem(preferences)
+
+        submenu.addItem(.separator())
+
+        let quit = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
+        quit.target = self
+        submenu.addItem(quit)
+
+        item.submenu = submenu
+        return item
+    }
+
+    private func addFeedActions(to submenu: NSMenu, feed: Feed, stories: [FeedStory]) {
+        let unreadStories = store.unreadStories(in: stories)
+
+        let markRead = NSMenuItem(title: "Mark all read", action: #selector(markFeedReadFromMenu(_:)), keyEquivalent: "")
+        markRead.target = self
+        markRead.representedObject = feed.id
+        markRead.isEnabled = !unreadStories.isEmpty
+        submenu.addItem(markRead)
+
+        let markUnread = NSMenuItem(title: "Mark all unread", action: #selector(markFeedUnreadFromMenu(_:)), keyEquivalent: "")
+        markUnread.target = self
+        markUnread.representedObject = feed.id
+        markUnread.isEnabled = stories.contains { store.isStoryRead($0) }
+        submenu.addItem(markUnread)
+
+        let showUnread = NSMenuItem(title: "Show all unread", action: #selector(showAllUnreadFromMenu(_:)), keyEquivalent: "")
+        showUnread.target = self
+        showUnread.representedObject = feed.id
+        showUnread.isEnabled = !unreadStories.isEmpty
+        submenu.addItem(showUnread)
+    }
+
+    private func feedMenuTitle(feed: Feed, unreadCount: Int) -> String {
+        unreadCount > 0 ? "\(feed.displayName) (\(unreadCount))" : feed.displayName
     }
 
     private func storyMenuItem(_ story: FeedStory) -> NSMenuItem {
-        let item = NSMenuItem(title: story.title, action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: story.title, action: #selector(openStory(_:)), keyEquivalent: "")
+        item.target = self
         let submenu = NSMenu()
         let feed = store.feeds.first { $0.id == story.sourceFeedID }
+        if let feed {
+            item.representedObject = FeedStoryContext(story: story, feed: feed)
+        } else {
+            item.representedObject = story
+        }
+        item.state = store.isStoryRead(story) ? .off : .on
 
         let preview = NSMenuItem()
         preview.view = StoryPreviewMenuView(story: story, feed: feed)
@@ -92,16 +172,6 @@ final class StatusMenuController: NSObject {
         previewWindow.isEnabled = story.link != nil
         submenu.addItem(previewWindow)
 
-        let open = NSMenuItem(title: "Open in Browser", action: #selector(openStory(_:)), keyEquivalent: "")
-        open.target = self
-        if let feed {
-            open.representedObject = FeedStoryContext(story: story, feed: feed)
-        } else {
-            open.representedObject = story
-        }
-        open.isEnabled = story.link != nil
-        submenu.addItem(open)
-
         item.submenu = submenu
         return item
     }
@@ -109,6 +179,7 @@ final class StatusMenuController: NSObject {
     private func rescheduleRefresh() {
         refreshTasks.values.forEach { $0.cancel() }
         refreshTasks.removeAll()
+        guard !updatesPaused else { return }
         for feed in store.feeds {
             refreshTasks[feed.id] = Task { [weak self] in
                 await self?.refreshLoop(feedID: feed.id)
@@ -165,14 +236,46 @@ final class StatusMenuController: NSObject {
     }
 
     @objc private func refreshAllFromMenu() {
+        guard !updatesPaused else { return }
         for feed in store.feeds {
             Task { await refreshFeed(id: feed.id) }
         }
     }
 
     @objc private func refreshFeedFromMenu(_ sender: NSMenuItem) {
+        guard !updatesPaused else { return }
         guard let id = sender.representedObject as? UUID else { return }
         Task { await refreshFeed(id: id) }
+    }
+
+    @objc private func toggleUpdatesPaused() {
+        updatesPaused.toggle()
+        rescheduleRefresh()
+        rebuildMenu()
+    }
+
+    @objc private func markAllReadFromMenu() {
+        store.markStories(allLoadedStories, read: true)
+    }
+
+    @objc private func markFeedReadFromMenu(_ sender: NSMenuItem) {
+        guard let stories = storiesForMenuItem(sender) else { return }
+        store.markStories(stories, read: true)
+    }
+
+    @objc private func markFeedUnreadFromMenu(_ sender: NSMenuItem) {
+        guard let stories = storiesForMenuItem(sender) else { return }
+        store.markStories(stories, read: false)
+    }
+
+    @objc private func showAllUnreadFromMenu(_ sender: NSMenuItem) {
+        guard let stories = storiesForMenuItem(sender) else { return }
+        openStories(store.unreadStories(in: stories))
+    }
+
+    private func storiesForMenuItem(_ sender: NSMenuItem) -> [FeedStory]? {
+        guard let id = sender.representedObject as? UUID else { return nil }
+        return storiesByFeed[id] ?? []
     }
 
     @objc private func openSettings() {
@@ -189,8 +292,10 @@ final class StatusMenuController: NSObject {
     @objc private func openPreview(_ sender: NSMenuItem) {
         let controller: PreviewWindowController
         if let context = sender.representedObject as? FeedStoryContext {
+            store.markStory(context.story, read: true)
             controller = PreviewWindowController(story: context.story, feed: context.feed)
         } else if let story = sender.representedObject as? FeedStory {
+            store.markStory(story, read: true)
             controller = PreviewWindowController(story: story)
         } else {
             return
@@ -204,10 +309,26 @@ final class StatusMenuController: NSObject {
     @objc private func openStory(_ sender: NSMenuItem) {
         if let context = sender.representedObject as? FeedStoryContext,
            let url = Self.storyURL(for: context.story, feed: context.feed) {
+            store.markStory(context.story, read: true)
             NSWorkspace.shared.open(url)
         } else if let story = sender.representedObject as? FeedStory, let url = story.link {
+            store.markStory(story, read: true)
             NSWorkspace.shared.open(url)
         }
+    }
+
+    private func openStories(_ stories: [FeedStory]) {
+        for story in stories {
+            guard let feed = store.feeds.first(where: { $0.id == story.sourceFeedID }),
+                  let url = Self.storyURL(for: story, feed: feed) ?? story.link else { continue }
+            store.markStory(story, read: true)
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc private func showAbout() {
+        NSApp.orderFrontStandardAboutPanel(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func quit() {

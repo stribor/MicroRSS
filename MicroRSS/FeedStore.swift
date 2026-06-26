@@ -8,6 +8,7 @@ final class FeedStore {
         var launchAtLogin: Bool?
         var notificationsEnabled: Bool?
         var highlightUnreadInStatusItem: Bool?
+        var readStoryIDs: Set<String>?
     }
 
     private let defaults: UserDefaults
@@ -18,6 +19,7 @@ final class FeedStore {
     private(set) var notificationsEnabled: Bool
     private(set) var highlightUnreadInStatusItem: Bool
     private(set) var feeds: [Feed]
+    private var readStoryIDs: Set<String>
 
     private var observers: [UUID: () -> Void] = [:]
 
@@ -30,12 +32,14 @@ final class FeedStore {
             notificationsEnabled = decoded.notificationsEnabled ?? true
             highlightUnreadInStatusItem = decoded.highlightUnreadInStatusItem ?? true
             feeds = decoded.feeds
+            readStoryIDs = decoded.readStoryIDs ?? []
         } else {
             globalRefreshMinutes = 30
             launchAtLogin = false
             notificationsEnabled = true
             highlightUnreadInStatusItem = true
             feeds = []
+            readStoryIDs = []
         }
     }
 
@@ -88,6 +92,36 @@ final class FeedStore {
         save()
     }
 
+    func isStoryRead(_ story: FeedStory) -> Bool {
+        readStoryIDs.contains(readID(for: story))
+    }
+
+    func unreadStories(in stories: [FeedStory]) -> [FeedStory] {
+        stories.filter { !isStoryRead($0) }
+    }
+
+    func markStory(_ story: FeedStory, read: Bool) {
+        let id = readID(for: story)
+        if read {
+            readStoryIDs.insert(id)
+        } else {
+            readStoryIDs.remove(id)
+        }
+        save()
+    }
+
+    func markStories(_ stories: [FeedStory], read: Bool) {
+        for story in stories {
+            let id = readID(for: story)
+            if read {
+                readStoryIDs.insert(id)
+            } else {
+                readStoryIDs.remove(id)
+            }
+        }
+        save()
+    }
+
     @discardableResult
     func observe(_ handler: @escaping () -> Void) -> UUID {
         let id = UUID()
@@ -105,11 +139,16 @@ final class FeedStore {
             feeds: feeds,
             launchAtLogin: launchAtLogin,
             notificationsEnabled: notificationsEnabled,
-            highlightUnreadInStatusItem: highlightUnreadInStatusItem
+            highlightUnreadInStatusItem: highlightUnreadInStatusItem,
+            readStoryIDs: readStoryIDs
         )
         if let data = try? JSONEncoder().encode(state) {
             defaults.set(data, forKey: key)
         }
         observers.values.forEach { $0() }
+    }
+
+    private func readID(for story: FeedStory) -> String {
+        "\(story.sourceFeedID.uuidString)|\(story.id)"
     }
 }
