@@ -39,6 +39,7 @@ final class PreferencesWindowController: NSWindowController {
         window.minSize = NSSize(width: 760, height: 560)
         super.init(window: window)
         buildUI()
+        configureGeneralActions()
         reloadGeneralSettings()
         reloadSelection()
         storeObserverID = store.observe { [weak self] in
@@ -136,9 +137,6 @@ final class PreferencesWindowController: NSWindowController {
         let resetIconCacheButton = NSButton(title: "Reset Icon Cache", target: self, action: #selector(resetIconCache))
         resetIconCacheButton.bezelStyle = .rounded
 
-        let saveButton = NSButton(title: "Save General Settings", target: self, action: #selector(saveGeneralSettings))
-        saveButton.bezelStyle = .rounded
-
         root.addArrangedSubview(title)
         root.addArrangedSubview(form)
         root.addArrangedSubview(options)
@@ -147,7 +145,6 @@ final class PreferencesWindowController: NSWindowController {
         root.addArrangedSubview(resetIconCacheButton)
         root.addArrangedSubview(globalMenuTitle)
         root.addArrangedSubview(globalMenuOptions)
-        root.addArrangedSubview(saveButton)
 
         NSLayoutConstraint.activate([
             root.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 28),
@@ -158,6 +155,28 @@ final class PreferencesWindowController: NSWindowController {
         ])
 
         return container
+    }
+
+    private func configureGeneralActions() {
+        globalRefreshField.target = self
+        globalRefreshField.action = #selector(applyGeneralSettingsFromControl)
+        globalRefreshField.delegate = self
+
+        [
+            launchAtLoginButton,
+            notificationsButton,
+            statusHighlightButton,
+            showMenuBarIconButton,
+            showMenuBarUnreadCountButton,
+            showFeedUnreadCountButton,
+            globalUpdateAllButton,
+            globalMarkAllReadButton,
+            globalMarkAllUnreadButton,
+            globalShowAllUnreadButton
+        ].forEach { button in
+            button.target = self
+            button.action = #selector(applyGeneralSettingsFromControl)
+        }
     }
 
     private func buildFeedsPane() -> NSView {
@@ -334,7 +353,7 @@ final class PreferencesWindowController: NSWindowController {
         tableView.selectRowIndexes(IndexSet(integer: row + 1), byExtendingSelection: false)
     }
 
-    @objc private func saveGeneralSettings() {
+    @objc private func applyGeneralSettingsFromControl() {
         let globalMinutes = Int(globalRefreshField.stringValue) ?? store.globalRefreshMinutes
         let launchAtLogin = launchAtLoginButton.state == .on
         guard updateLaunchAtLogin(enabled: launchAtLogin) else { return }
@@ -452,6 +471,12 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
 extension PreferencesWindowController: NSTextFieldDelegate {
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
+
+        if field === globalRefreshField {
+            applyGeneralSettingsFromControl()
+            return
+        }
+
         let row = tableView.row(for: field)
         let column = tableView.column(for: field)
         guard store.feeds.indices.contains(row), column >= 0 else { return }
