@@ -75,11 +75,6 @@ final class StatusMenuController: NSObject {
                     }
                 }
 
-                submenu.addItem(.separator())
-                submenu.addItem(NSMenuItem(title: "Refresh Now", action: #selector(refreshFeedFromMenu(_:)), keyEquivalent: ""))
-                submenu.items.last?.target = self
-                submenu.items.last?.representedObject = feed.id
-                submenu.items.last?.isEnabled = !updatesPaused
                 item.submenu = submenu
                 menu.addItem(item)
             }
@@ -171,6 +166,12 @@ final class StatusMenuController: NSObject {
 
     private func addFeedActions(to submenu: NSMenu, feed: Feed, stories: [FeedStory]) {
         let unreadStories = store.unreadStories(in: stories)
+
+        let refresh = NSMenuItem(title: "Refresh Now", action: #selector(refreshFeedFromMenu(_:)), keyEquivalent: "")
+        refresh.target = self
+        refresh.representedObject = feed.id
+        refresh.isEnabled = !updatesPaused
+        submenu.addItem(refresh)
 
         let markRead = NSMenuItem(title: "Mark all read", action: #selector(markFeedReadFromMenu(_:)), keyEquivalent: "")
         markRead.target = self
