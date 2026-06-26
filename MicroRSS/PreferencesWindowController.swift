@@ -44,7 +44,7 @@ final class PreferencesWindowController: NSWindowController {
         )
         window.title = "MicroRSS Settings"
         window.minSize = NSSize(width: 760, height: 560)
-        window.toolbarStyle = .preference
+        window.toolbarStyle = .expanded
         super.init(window: window)
         configureToolbar()
         buildUI()
