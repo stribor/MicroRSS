@@ -5,8 +5,19 @@ final class RSSService: NSObject, @unchecked Sendable {
         case invalidResponse
     }
 
+    private let session: URLSession
+
+    override init() {
+        let configuration = URLSessionConfiguration.default
+        configuration.httpCookieAcceptPolicy = .always
+        configuration.httpCookieStorage = .shared
+        configuration.httpShouldSetCookies = true
+        session = URLSession(configuration: configuration)
+        super.init()
+    }
+
     func fetch(feed: Feed) async throws -> ([FeedStory], FeedMetadata) {
-        let (data, response) = try await URLSession.shared.data(from: feed.url)
+        let (data, response) = try await session.data(from: feed.url)
         guard let http = response as? HTTPURLResponse, 200..<400 ~= http.statusCode else {
             throw RSSServiceError.invalidResponse
         }

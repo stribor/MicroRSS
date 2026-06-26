@@ -82,6 +82,16 @@ final class StatusMenuController: NSObject {
         preview.view = StoryPreviewMenuView(story: story, feed: feed)
         submenu.addItem(preview)
 
+        let previewWindow = NSMenuItem(title: "Open Preview Window", action: #selector(openPreview(_:)), keyEquivalent: "")
+        previewWindow.target = self
+        if let feed {
+            previewWindow.representedObject = FeedStoryContext(story: story, feed: feed)
+        } else {
+            previewWindow.representedObject = story
+        }
+        previewWindow.isEnabled = story.link != nil
+        submenu.addItem(previewWindow)
+
         let open = NSMenuItem(title: "Open in Browser", action: #selector(openStory(_:)), keyEquivalent: "")
         open.target = self
         if let feed {
@@ -177,8 +187,14 @@ final class StatusMenuController: NSObject {
     }
 
     @objc private func openPreview(_ sender: NSMenuItem) {
-        guard let story = sender.representedObject as? FeedStory else { return }
-        let controller = PreviewWindowController(story: story)
+        let controller: PreviewWindowController
+        if let context = sender.representedObject as? FeedStoryContext {
+            controller = PreviewWindowController(story: context.story, feed: context.feed)
+        } else if let story = sender.representedObject as? FeedStory {
+            controller = PreviewWindowController(story: story)
+        } else {
+            return
+        }
         previewWindows.append(controller)
         controller.window?.delegate = self
         controller.showWindow(nil)
@@ -224,7 +240,7 @@ private final class StoryPreviewMenuView: NSView {
 
     private let story: FeedStory
     private let feed: Feed?
-    private let webView = WKWebView()
+    private let webView = WKWebView(frame: .zero, configuration: WebPreviewSession.makeConfiguration())
     private var hasLoaded = false
 
     init(story: FeedStory, feed: Feed?) {
@@ -249,7 +265,7 @@ private final class StoryPreviewMenuView: NSView {
         guard window != nil, !hasLoaded else { return }
         hasLoaded = true
         if let request = StatusMenuController.storyRequest(for: story, feed: feed) {
-            webView.load(request)
+            WebPreviewSession.load(request, in: webView, feed: feed)
         } else {
             webView.loadHTMLString(Self.summaryHTML(for: story), baseURL: nil)
         }
@@ -263,6 +279,53 @@ private final class StoryPreviewMenuView: NSView {
         <body><h1>\(story.title.escapedHTML)</h1><div>\(story.summary)</div></body>
         </html>
         """
+    }
+}
+
+@MainActor
+enum WebPreviewSession {
+    private static let processPool = WKProcessPool()
+
+    static func makeConfiguration() -> WKWebViewConfiguration {
+        let configuration = WKWebViewConfiguration()
+        configuration.processPool = processPool
+        configuration.websiteDataStore = .default()
+        return configuration
+    }
+
+    static func load(_ request: URLRequest, in webView: WKWebView, feed: Feed?) {
+        let cookies = cookiesForPreview(request: request, feed: feed)
+        setCookies(cookies, in: webView.configuration.websiteDataStore.httpCookieStore) {
+            webView.load(request)
+        }
+    }
+
+    private static func cookiesForPreview(request: URLRequest, feed: Feed?) -> [HTTPCookie] {
+        let urls = [request.url, feed?.url].compactMap { $0 }
+        var seenKeys: Set<String> = []
+        var cookies: [HTTPCookie] = []
+
+        for url in urls {
+            for cookie in HTTPCookieStorage.shared.cookies(for: url) ?? [] {
+                let key = "\(cookie.domain)|\(cookie.path)|\(cookie.name)"
+                if seenKeys.insert(key).inserted {
+                    cookies.append(cookie)
+                }
+            }
+        }
+
+        return cookies
+    }
+
+    private static func setCookies(_ cookies: [HTTPCookie], in store: WKHTTPCookieStore, completion: @escaping () -> Void) {
+        guard let cookie = cookies.first else {
+            completion()
+            return
+        }
+
+        store.setCookie(cookie) {
+            setCookies(Array(cookies.dropFirst()), in: store, completion: completion)
+        }
     }
 }
 

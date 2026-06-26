@@ -4,10 +4,13 @@ import WebKit
 @MainActor
 final class PreviewWindowController: NSWindowController {
     private let story: FeedStory
-    private let webView = WKWebView()
+    private let feed: Feed?
+    private let webView: WKWebView
 
-    init(story: FeedStory) {
+    init(story: FeedStory, feed: Feed? = nil) {
         self.story = story
+        self.feed = feed
+        webView = WKWebView(frame: .zero, configuration: WebPreviewSession.makeConfiguration())
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 860, height: 640),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -34,8 +37,8 @@ final class PreviewWindowController: NSWindowController {
             webView.bottomAnchor.constraint(equalTo: content.bottomAnchor)
         ])
 
-        if let link = story.link {
-            webView.load(URLRequest(url: link))
+        if let request = StatusMenuController.storyRequest(for: story, feed: feed) {
+            WebPreviewSession.load(request, in: webView, feed: feed)
         } else {
             let html = """
             <!doctype html>
