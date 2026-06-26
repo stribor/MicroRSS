@@ -237,12 +237,15 @@ extension StatusMenuController: NSWindowDelegate {
 
 private final class StoryPreviewMenuView: NSView {
     private static let previewSize = NSSize(width: 640, height: 420)
-    private static let contentInsets = NSEdgeInsets(top: 18, left: 18, bottom: 18, right: 18)
 
-    private let previewText: NSAttributedString
+    private let story: FeedStory
+    private let feed: Feed?
+    private var webView: WKWebView?
+    private var didStartLoading = false
 
     init(story: FeedStory, feed: Feed?) {
-        previewText = Self.attributedPreview(for: story)
+        self.story = story
+        self.feed = feed
         super.init(frame: NSRect(origin: .zero, size: Self.previewSize))
     }
 
@@ -258,61 +261,44 @@ private final class StoryPreviewMenuView: NSView {
         NSColor.textBackgroundColor.setFill()
         bounds.fill()
 
-        let insets = Self.contentInsets
-        let textRect = NSRect(
-            x: bounds.minX + insets.left,
-            y: bounds.minY + insets.bottom,
-            width: bounds.width - insets.left - insets.right,
-            height: bounds.height - insets.top - insets.bottom
-        )
-        previewText.draw(in: textRect)
-    }
-
-    private static func attributedPreview(for story: FeedStory) -> NSAttributedString {
-        let title = story.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let body = story.summary.htmlStripped.trimmingCharacters(in: .whitespacesAndNewlines)
-        let text = body.isEmpty ? "No feed preview text is available for this article." : body
-
-        let result = NSMutableAttributedString(
-            string: "\(title)\n\n",
-            attributes: [
-                .font: NSFont.boldSystemFont(ofSize: 18),
-                .foregroundColor: NSColor.labelColor
-            ]
-        )
-        result.append(NSAttributedString(
-            string: text,
-            attributes: [
+        guard webView == nil else { return }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        "Loading preview...".draw(
+            in: bounds.insetBy(dx: 24, dy: 190),
+            withAttributes: [
                 .font: NSFont.systemFont(ofSize: 14),
-                .foregroundColor: NSColor.labelColor
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: paragraph
             ]
-        ))
-        result.addAttributes([
-            .paragraphStyle: {
-                let style = NSMutableParagraphStyle()
-                style.lineSpacing = 3
-                return style
-            }()
-        ], range: NSRange(location: 0, length: result.length))
-        return result
+        )
     }
-}
 
-private extension String {
-    var htmlStripped: String {
-        guard !isEmpty else { return "" }
-        guard let data = data(using: .utf8),
-              let attributed = try? NSAttributedString(
-                data: data,
-                options: [
-                    .documentType: NSAttributedString.DocumentType.html,
-                    .characterEncoding: String.Encoding.utf8.rawValue
-                ],
-                documentAttributes: nil
-              ) else {
-            return self
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil, !didStartLoading else { return }
+
+        didStartLoading = true
+        let webView = WKWebView(frame: bounds, configuration: WebPreviewSession.makeConfiguration())
+        webView.autoresizingMask = [.width, .height]
+        addSubview(webView)
+        self.webView = webView
+
+        if let request = StatusMenuController.storyRequest(for: story, feed: feed) {
+            WebPreviewSession.load(request, in: webView, feed: feed)
+        } else {
+            webView.loadHTMLString(Self.summaryHTML(for: story), baseURL: nil)
         }
-        return attributed.string
+    }
+
+    private static func summaryHTML(for story: FeedStory) -> String {
+        """
+        <!doctype html>
+        <html>
+        <head><meta charset="utf-8"><style>body{font: -apple-system-body; margin: 24px;} h1{font: -apple-system-title2;}</style></head>
+        <body><h1>\(story.title.escapedHTML)</h1><div>\(story.summary)</div></body>
+        </html>
+        """
     }
 }
 
@@ -359,6 +345,7 @@ enum WebPreviewSession {
         }
     }
 }
+
 
 private extension URL {
     func appendingMissingQueryItems(from sourceURL: URL) -> URL {
