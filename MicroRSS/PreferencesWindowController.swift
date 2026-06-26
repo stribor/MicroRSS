@@ -4,8 +4,15 @@ import ServiceManagement
 @MainActor
 final class PreferencesWindowController: NSWindowController {
     private enum TabID {
-        static let general = "general"
         static let feeds = "feeds"
+        static let general = "general"
+        static let about = "about"
+    }
+
+    private enum ToolbarID {
+        static let feeds = NSToolbarItem.Identifier("feeds")
+        static let general = NSToolbarItem.Identifier("general")
+        static let about = NSToolbarItem.Identifier("about")
     }
 
     private let store: FeedStore
@@ -37,11 +44,16 @@ final class PreferencesWindowController: NSWindowController {
         )
         window.title = "MicroRSS Settings"
         window.minSize = NSSize(width: 760, height: 560)
+        window.toolbarStyle = .preference
         super.init(window: window)
+        configureToolbar()
         buildUI()
         configureGeneralActions()
         reloadGeneralSettings()
         reloadSelection()
+        iconCache.didUpdate = { [weak self] in
+            self?.tableView.reloadData()
+        }
         storeObserverID = store.observe { [weak self] in
             self?.reloadGeneralSettings()
             self?.tableView.reloadData()
@@ -61,21 +73,34 @@ final class PreferencesWindowController: NSWindowController {
         }
     }
 
+    private func configureToolbar() {
+        let toolbar = NSToolbar(identifier: "MicroRSSSettingsToolbar")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconAndLabel
+        toolbar.allowsUserCustomization = false
+        toolbar.autosavesConfiguration = false
+        window?.toolbar = toolbar
+        window?.toolbar?.selectedItemIdentifier = ToolbarID.feeds
+    }
+
     private func buildUI() {
         guard let content = window?.contentView else { return }
 
+        tabView.tabViewType = .noTabsNoBorder
         tabView.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(tabView)
 
         NSLayoutConstraint.activate([
-            tabView.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
-            tabView.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-            tabView.topAnchor.constraint(equalTo: content.topAnchor, constant: 14),
-            tabView.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16)
+            tabView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            tabView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            tabView.topAnchor.constraint(equalTo: content.topAnchor),
+            tabView.bottomAnchor.constraint(equalTo: content.bottomAnchor)
         ])
 
-        tabView.addTabViewItem(tabItem(identifier: TabID.general, label: "General", view: buildGeneralPane()))
         tabView.addTabViewItem(tabItem(identifier: TabID.feeds, label: "Feeds", view: buildFeedsPane()))
+        tabView.addTabViewItem(tabItem(identifier: TabID.general, label: "General", view: buildGeneralPane()))
+        tabView.addTabViewItem(tabItem(identifier: TabID.about, label: "About", view: buildAboutPane()))
+        tabView.selectTabViewItem(withIdentifier: TabID.feeds)
     }
 
     private func tabItem(identifier: String, label: String, view: NSView) -> NSTabViewItem {
@@ -207,6 +232,47 @@ final class PreferencesWindowController: NSWindowController {
         return title
     }
 
+    private func buildAboutPane() -> NSView {
+        let container = NSView()
+        let root = NSStackView()
+        root.orientation = .vertical
+        root.alignment = .centerX
+        root.spacing = 10
+        root.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(root)
+
+        let icon = NSImageView(image: NSApp.applicationIconImage)
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.translatesAutoresizingMaskIntoConstraints = false
+
+        let name = NSTextField(labelWithString: "MicroRSS")
+        name.font = NSFont.boldSystemFont(ofSize: 24)
+
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        let versionLabel = NSTextField(labelWithString: "Version \(version) (\(build))")
+        versionLabel.textColor = .secondaryLabelColor
+
+        let description = NSTextField(labelWithString: "A minimal native macOS RSS reader for the menu bar.")
+        description.textColor = .secondaryLabelColor
+
+        root.addArrangedSubview(icon)
+        root.addArrangedSubview(name)
+        root.addArrangedSubview(versionLabel)
+        root.addArrangedSubview(description)
+
+        NSLayoutConstraint.activate([
+            root.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            root.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            root.leadingAnchor.constraint(greaterThanOrEqualTo: container.leadingAnchor, constant: 28),
+            root.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -28),
+            icon.widthAnchor.constraint(equalToConstant: 96),
+            icon.heightAnchor.constraint(equalToConstant: 96)
+        ])
+
+        return container
+    }
+
     private func buildFeedTable() -> NSScrollView {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
@@ -327,7 +393,7 @@ final class PreferencesWindowController: NSWindowController {
         tableView.reloadData()
         tableView.selectRowIndexes(IndexSet(integer: max(0, store.feeds.count - 1)), byExtendingSelection: false)
         reloadSelection()
-        tabView.selectTabViewItem(withIdentifier: TabID.feeds)
+        selectPane(identifier: TabID.feeds)
         editSelectedFeedColumn("url")
     }
 
@@ -375,6 +441,16 @@ final class PreferencesWindowController: NSWindowController {
 
     @objc private func resetIconCache() {
         iconCache.reset()
+        tableView.reloadData()
+    }
+
+    @objc private func selectSettingsPane(_ sender: NSToolbarItem) {
+        selectPane(identifier: sender.itemIdentifier.rawValue)
+    }
+
+    private func selectPane(identifier: String) {
+        tabView.selectTabViewItem(withIdentifier: identifier)
+        window?.toolbar?.selectedItemIdentifier = NSToolbarItem.Identifier(identifier)
     }
 
     private func editSelectedFeedColumn(_ identifier: String) {
@@ -414,6 +490,7 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
         let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? NSTableCellView()
         cell.identifier = identifier
 
+        let isNameColumn = tableColumn.identifier.rawValue == "name"
         let label: NSTextField
         if let existing = cell.textField {
             label = existing
@@ -431,17 +508,49 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
             label.delegate = self
             cell.addSubview(label)
             cell.textField = label
-            NSLayoutConstraint.activate([
-                label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
-                label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
-                label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-            ])
+
+            if isNameColumn {
+                let imageView = NSImageView()
+                imageView.translatesAutoresizingMaskIntoConstraints = false
+                imageView.imageScaling = .scaleProportionallyUpOrDown
+                cell.addSubview(imageView)
+                cell.imageView = imageView
+
+                NSLayoutConstraint.activate([
+                    imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
+                    imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    imageView.widthAnchor.constraint(equalToConstant: 16),
+                    imageView.heightAnchor.constraint(equalToConstant: 16),
+                    label.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 7),
+                    label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
+                    label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+                ])
+            } else {
+                NSLayoutConstraint.activate([
+                    label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
+                    label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
+                    label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+                ])
+            }
+        }
+
+        if !isNameColumn {
+            cell.imageView?.image = nil
+            cell.imageView?.isHidden = true
+        } else {
+            cell.imageView?.isHidden = false
         }
 
         let feed = store.feeds[row]
         label.textColor = .labelColor
         switch tableColumn.identifier.rawValue {
         case "name":
+            if let image = iconCache.image(for: feed) {
+                image.size = NSSize(width: 16, height: 16)
+                cell.imageView?.image = image
+            } else {
+                cell.imageView?.image = NSImage(named: "MenuIconRead")
+            }
             label.font = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
             label.alignment = .left
             label.lineBreakMode = .byTruncatingTail
@@ -465,6 +574,50 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
             label.stringValue = ""
         }
         return cell
+    }
+}
+
+extension PreferencesWindowController: NSToolbarDelegate {
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [ToolbarID.feeds, ToolbarID.general, .flexibleSpace, ToolbarID.about]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [ToolbarID.feeds, ToolbarID.general, ToolbarID.about, .flexibleSpace]
+    }
+
+    func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        [ToolbarID.feeds, ToolbarID.general, ToolbarID.about]
+    }
+
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+        item.target = self
+        item.action = #selector(selectSettingsPane(_:))
+
+        switch itemIdentifier {
+        case ToolbarID.feeds:
+            item.label = "Feeds"
+            item.paletteLabel = "Feeds"
+            item.image = NSImage(systemSymbolName: "dot.radiowaves.left.and.right", accessibilityDescription: "Feeds")
+                ?? NSImage(named: "MenuIconUnread")
+        case ToolbarID.general:
+            item.label = "General"
+            item.paletteLabel = "General"
+            item.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "General")
+        case ToolbarID.about:
+            item.label = "About"
+            item.paletteLabel = "About"
+            item.image = NSImage(systemSymbolName: "info.circle.fill", accessibilityDescription: "About")
+        default:
+            return nil
+        }
+
+        return item
     }
 }
 
