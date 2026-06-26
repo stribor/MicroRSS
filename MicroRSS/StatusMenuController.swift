@@ -239,17 +239,13 @@ private final class StoryPreviewMenuView: NSView {
     private static let previewSize = NSSize(width: 640, height: 420)
 
     private let story: FeedStory
-    private let feed: Feed?
-    private let webView = WKWebView(frame: .zero, configuration: WebPreviewSession.makeConfiguration())
-    private var hasLoaded = false
+    private let scrollView = NSScrollView()
+    private let textView = NSTextView()
 
     init(story: FeedStory, feed: Feed?) {
         self.story = story
-        self.feed = feed
         super.init(frame: NSRect(origin: .zero, size: Self.previewSize))
-        webView.frame = bounds
-        webView.autoresizingMask = [.width, .height]
-        addSubview(webView)
+        buildPreview()
     }
 
     required init?(coder: NSCoder) {
@@ -260,25 +256,50 @@ private final class StoryPreviewMenuView: NSView {
         Self.previewSize
     }
 
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        guard window != nil, !hasLoaded else { return }
-        hasLoaded = true
-        if let request = StatusMenuController.storyRequest(for: story, feed: feed) {
-            WebPreviewSession.load(request, in: webView, feed: feed)
-        } else {
-            webView.loadHTMLString(Self.summaryHTML(for: story), baseURL: nil)
-        }
+    private func buildPreview() {
+        scrollView.frame = bounds
+        scrollView.autoresizingMask = [.width, .height]
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .noBorder
+
+        textView.frame = scrollView.bounds
+        textView.autoresizingMask = [.width]
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.drawsBackground = true
+        textView.backgroundColor = .textBackgroundColor
+        textView.textContainerInset = NSSize(width: 16, height: 16)
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: Self.previewSize.width - 32, height: .greatestFiniteMagnitude)
+        textView.textStorage?.setAttributedString(Self.attributedPreview(for: story))
+
+        scrollView.documentView = textView
+        addSubview(scrollView)
     }
 
-    private static func summaryHTML(for story: FeedStory) -> String {
+    private static func attributedPreview(for story: FeedStory) -> NSAttributedString {
+        let body = story.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let htmlBody = body.isEmpty ? "<p>No feed preview text is available for this article.</p>" : body
+        let html = """
+        <!doctype html><html><head><meta charset="utf-8"><style>
+        body { font-family: -apple-system; font-size: 14px; line-height: 1.35; }
+        h1 { font-size: 18px; margin: 0 0 14px 0; }
+        img { max-width: 580px; height: auto; }
+        </style></head><body><h1>\(story.title.escapedHTML)</h1>\(htmlBody)</body></html>
         """
-        <!doctype html>
-        <html>
-        <head><meta charset="utf-8"><style>body{font: -apple-system-body; margin: 24px; max-width: 560px;} h1{font: -apple-system-title2;}</style></head>
-        <body><h1>\(story.title.escapedHTML)</h1><div>\(story.summary)</div></body>
-        </html>
-        """
+
+        guard let data = html.data(using: .utf8),
+              let attributed = try? NSAttributedString(
+                data: data,
+                options: [
+                    .documentType: NSAttributedString.DocumentType.html,
+                    .characterEncoding: String.Encoding.utf8.rawValue
+                ],
+                documentAttributes: nil
+              ) else {
+            return NSAttributedString(string: "\(story.title)\n\n\(body)")
+        }
+        return attributed
     }
 }
 
