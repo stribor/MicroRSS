@@ -165,7 +165,8 @@ final class FeedStore {
         stories.filter { !isStoryRead($0) }
     }
 
-    func markStory(_ story: FeedStory, read: Bool, notifyObservers: Bool = true) {
+    @discardableResult
+    func markStory(_ story: FeedStory, read: Bool, notifyObservers: Bool = true) -> Bool {
         let id = readID(for: story)
         let changed: Bool
         if read {
@@ -173,11 +174,13 @@ final class FeedStore {
         } else {
             changed = readStoryIDs.remove(id) != nil
         }
-        guard changed else { return }
+        guard changed else { return false }
         save(notifyObservers: notifyObservers)
+        return true
     }
 
-    func markStories(_ stories: [FeedStory], read: Bool, notifyObservers: Bool = true) {
+    @discardableResult
+    func markStories(_ stories: [FeedStory], read: Bool, notifyObservers: Bool = true) -> Bool {
         var changed = false
         for story in stories {
             let id = readID(for: story)
@@ -187,8 +190,9 @@ final class FeedStore {
                 changed = (readStoryIDs.remove(id) != nil) || changed
             }
         }
-        guard changed else { return }
+        guard changed else { return false }
         save(notifyObservers: notifyObservers)
+        return true
     }
 
     @discardableResult

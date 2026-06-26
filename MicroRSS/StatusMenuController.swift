@@ -66,6 +66,7 @@ final class StatusMenuController: NSObject {
                 let unreadCount = store.unreadStories(in: stories).count
                 let item = NSMenuItem(title: feedMenuTitle(feed: feed, unreadCount: unreadCount), action: nil, keyEquivalent: "")
                 item.image = menuImage(for: feed)
+                item.representedObject = feed.id
                 let submenu = NSMenu()
 
                 addFeedActions(to: submenu, feed: feed, stories: stories)
@@ -220,8 +221,8 @@ final class StatusMenuController: NSObject {
         item.state = store.isStoryRead(story) ? .off : .on
 
         let preview = NSMenuItem()
-        preview.view = StoryPreviewMenuView(story: story, feed: feed) { [weak self] story in
-            self?.markStoryReadFromPreview(story)
+        preview.view = StoryPreviewMenuView(story: story, feed: feed) { [weak self, weak item] story in
+            self?.markStoryReadFromPreview(story, menuItem: item)
         }
         submenu.addItem(preview)
 
@@ -355,9 +356,58 @@ final class StatusMenuController: NSObject {
         return storiesByFeed[id] ?? []
     }
 
-    private func markStoryReadFromPreview(_ story: FeedStory) {
-        store.markStory(story, read: true, notifyObservers: false)
+    private func markStoryReadFromPreview(_ story: FeedStory, menuItem: NSMenuItem?) {
+        guard store.markStory(story, read: true, notifyObservers: false) else { return }
+        menuItem?.state = .off
+        updateVisibleMenuItems()
         updateStatusItem()
+    }
+
+    private func updateVisibleMenuItems() {
+        updateItems(in: menu)
+    }
+
+    private func updateItems(in menu: NSMenu) {
+        for item in menu.items {
+            if let context = item.representedObject as? FeedStoryContext {
+                item.state = store.isStoryRead(context.story) ? .off : .on
+            } else if let story = item.representedObject as? FeedStory {
+                item.state = store.isStoryRead(story) ? .off : .on
+            } else if let id = item.representedObject as? UUID, let stories = storiesByFeed[id] {
+                updateFeedItem(item, feedID: id, stories: stories)
+            } else {
+                updateGlobalActionItem(item)
+            }
+
+            if let submenu = item.submenu {
+                updateItems(in: submenu)
+            }
+        }
+    }
+
+    private func updateFeedItem(_ item: NSMenuItem, feedID: UUID, stories: [FeedStory]) {
+        switch item.action {
+        case #selector(markFeedReadFromMenu(_:)), #selector(showAllUnreadFromMenu(_:)):
+            item.isEnabled = stories.contains { !store.isStoryRead($0) }
+        case #selector(markFeedUnreadFromMenu(_:)):
+            item.isEnabled = stories.contains { store.isStoryRead($0) }
+        default:
+            if item.submenu != nil, let feed = store.feeds.first(where: { $0.id == feedID }) {
+                let unreadCount = stories.filter { !store.isStoryRead($0) }.count
+                item.title = feedMenuTitle(feed: feed, unreadCount: unreadCount)
+            }
+        }
+    }
+
+    private func updateGlobalActionItem(_ item: NSMenuItem) {
+        switch item.action {
+        case #selector(markAllReadFromMenu), #selector(showAllUnreadGloballyFromMenu):
+            item.isEnabled = allLoadedStories.contains { !store.isStoryRead($0) }
+        case #selector(markAllUnreadFromMenu):
+            item.isEnabled = allLoadedStories.contains { store.isStoryRead($0) }
+        default:
+            break
+        }
     }
 
     @objc private func openSettings() {
