@@ -220,6 +220,8 @@ extension StatusMenuController: NSWindowDelegate {
 }
 
 private final class StoryPreviewMenuView: NSView {
+    private static let previewSize = NSSize(width: 640, height: 420)
+
     private let story: FeedStory
     private let feed: Feed?
     private let webView = WKWebView()
@@ -228,21 +230,18 @@ private final class StoryPreviewMenuView: NSView {
     init(story: FeedStory, feed: Feed?) {
         self.story = story
         self.feed = feed
-        super.init(frame: NSRect(x: 0, y: 0, width: 640, height: 420))
-        webView.translatesAutoresizingMaskIntoConstraints = false
+        super.init(frame: NSRect(origin: .zero, size: Self.previewSize))
+        webView.frame = bounds
+        webView.autoresizingMask = [.width, .height]
         addSubview(webView)
-        NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: 640),
-            heightAnchor.constraint(equalToConstant: 420),
-            webView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            webView.topAnchor.constraint(equalTo: topAnchor),
-            webView.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
     }
 
     required init?(coder: NSCoder) {
         nil
+    }
+
+    override var intrinsicContentSize: NSSize {
+        Self.previewSize
     }
 
     override func viewDidMoveToWindow() {
