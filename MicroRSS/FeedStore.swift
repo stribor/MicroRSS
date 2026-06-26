@@ -9,6 +9,13 @@ final class FeedStore {
         var notificationsEnabled: Bool?
         var highlightUnreadInStatusItem: Bool?
         var readStoryIDs: Set<String>?
+        var showMenuBarIcon: Bool?
+        var showUnreadCountInMenuBar: Bool?
+        var showUnreadCountInFeeds: Bool?
+        var showGlobalUpdateAll: Bool?
+        var showGlobalMarkAllRead: Bool?
+        var showGlobalMarkAllUnread: Bool?
+        var showGlobalShowAllUnread: Bool?
     }
 
     private let defaults: UserDefaults
@@ -18,6 +25,13 @@ final class FeedStore {
     private(set) var launchAtLogin: Bool
     private(set) var notificationsEnabled: Bool
     private(set) var highlightUnreadInStatusItem: Bool
+    private(set) var showMenuBarIcon: Bool
+    private(set) var showUnreadCountInMenuBar: Bool
+    private(set) var showUnreadCountInFeeds: Bool
+    private(set) var showGlobalUpdateAll: Bool
+    private(set) var showGlobalMarkAllRead: Bool
+    private(set) var showGlobalMarkAllUnread: Bool
+    private(set) var showGlobalShowAllUnread: Bool
     private(set) var feeds: [Feed]
     private var readStoryIDs: Set<String>
 
@@ -33,6 +47,13 @@ final class FeedStore {
             highlightUnreadInStatusItem = decoded.highlightUnreadInStatusItem ?? true
             feeds = decoded.feeds
             readStoryIDs = decoded.readStoryIDs ?? []
+            showMenuBarIcon = decoded.showMenuBarIcon ?? true
+            showUnreadCountInMenuBar = decoded.showUnreadCountInMenuBar ?? true
+            showUnreadCountInFeeds = decoded.showUnreadCountInFeeds ?? true
+            showGlobalUpdateAll = decoded.showGlobalUpdateAll ?? true
+            showGlobalMarkAllRead = decoded.showGlobalMarkAllRead ?? true
+            showGlobalMarkAllUnread = decoded.showGlobalMarkAllUnread ?? true
+            showGlobalShowAllUnread = decoded.showGlobalShowAllUnread ?? true
         } else {
             globalRefreshMinutes = 30
             launchAtLogin = false
@@ -40,6 +61,13 @@ final class FeedStore {
             highlightUnreadInStatusItem = true
             feeds = []
             readStoryIDs = []
+            showMenuBarIcon = true
+            showUnreadCountInMenuBar = true
+            showUnreadCountInFeeds = true
+            showGlobalUpdateAll = true
+            showGlobalMarkAllRead = true
+            showGlobalMarkAllUnread = true
+            showGlobalShowAllUnread = true
         }
     }
 
@@ -47,12 +75,26 @@ final class FeedStore {
         globalRefreshMinutes: Int,
         launchAtLogin: Bool,
         notificationsEnabled: Bool,
-        highlightUnreadInStatusItem: Bool
+        highlightUnreadInStatusItem: Bool,
+        showMenuBarIcon: Bool,
+        showUnreadCountInMenuBar: Bool,
+        showUnreadCountInFeeds: Bool,
+        showGlobalUpdateAll: Bool,
+        showGlobalMarkAllRead: Bool,
+        showGlobalMarkAllUnread: Bool,
+        showGlobalShowAllUnread: Bool
     ) {
         self.globalRefreshMinutes = max(1, globalRefreshMinutes)
         self.launchAtLogin = launchAtLogin
         self.notificationsEnabled = notificationsEnabled
         self.highlightUnreadInStatusItem = highlightUnreadInStatusItem
+        self.showMenuBarIcon = showMenuBarIcon
+        self.showUnreadCountInMenuBar = showUnreadCountInMenuBar
+        self.showUnreadCountInFeeds = showUnreadCountInFeeds
+        self.showGlobalUpdateAll = showGlobalUpdateAll
+        self.showGlobalMarkAllRead = showGlobalMarkAllRead
+        self.showGlobalMarkAllUnread = showGlobalMarkAllUnread
+        self.showGlobalShowAllUnread = showGlobalShowAllUnread
         save()
     }
 
@@ -140,7 +182,14 @@ final class FeedStore {
             launchAtLogin: launchAtLogin,
             notificationsEnabled: notificationsEnabled,
             highlightUnreadInStatusItem: highlightUnreadInStatusItem,
-            readStoryIDs: readStoryIDs
+            readStoryIDs: readStoryIDs,
+            showMenuBarIcon: showMenuBarIcon,
+            showUnreadCountInMenuBar: showUnreadCountInMenuBar,
+            showUnreadCountInFeeds: showUnreadCountInFeeds,
+            showGlobalUpdateAll: showGlobalUpdateAll,
+            showGlobalMarkAllRead: showGlobalMarkAllRead,
+            showGlobalMarkAllUnread: showGlobalMarkAllUnread,
+            showGlobalShowAllUnread: showGlobalShowAllUnread
         )
         if let data = try? JSONEncoder().encode(state) {
             defaults.set(data, forKey: key)

@@ -82,8 +82,12 @@ private final class FeedXMLParser: NSObject, XMLParserDelegate {
             itemLink = href
         }
 
-        if !inItem, element == "link", let href = attributeDict["href"], metadata.siteURL == nil {
-            metadata.siteURL = URL(string: href, relativeTo: feedURL)?.absoluteURL
+        if !inItem, element == "link", let href = attributeDict["href"] {
+            if attributeDict["rel"]?.lowercased().contains("icon") == true {
+                metadata.iconURL = URL(string: href, relativeTo: feedURL)?.absoluteURL
+            } else if metadata.siteURL == nil {
+                metadata.siteURL = URL(string: href, relativeTo: feedURL)?.absoluteURL
+            }
         }
 
         if !inItem, (element == "icon" || element == "logo"), let href = attributeDict["href"] {
@@ -124,6 +128,10 @@ private final class FeedXMLParser: NSObject, XMLParserDelegate {
             case "link":
                 if metadata.siteURL == nil, !value.isEmpty {
                     metadata.siteURL = URL(string: value, relativeTo: feedURL)?.absoluteURL
+                }
+            case "url":
+                if metadata.iconURL == nil, currentElementStack.contains("image"), !value.isEmpty {
+                    metadata.iconURL = URL(string: value, relativeTo: feedURL)?.absoluteURL
                 }
             case "icon", "logo":
                 if metadata.iconURL == nil, !value.isEmpty {

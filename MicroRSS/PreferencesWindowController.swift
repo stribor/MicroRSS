@@ -9,12 +9,20 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     private let store: FeedStore
+    private let iconCache = FeedIconCache()
     private let tabView = NSTabView()
     private let tableView = NSTableView()
     private let globalRefreshField = NSTextField()
     private let launchAtLoginButton = NSButton(checkboxWithTitle: "Start at login", target: nil, action: nil)
     private let notificationsButton = NSButton(checkboxWithTitle: "Show notifications for new articles", target: nil, action: nil)
-    private let statusHighlightButton = NSButton(checkboxWithTitle: "Highlight unread items in the menu bar", target: nil, action: nil)
+    private let statusHighlightButton = NSButton(checkboxWithTitle: "Dim menu bar icon when all articles are read", target: nil, action: nil)
+    private let showMenuBarIconButton = NSButton(checkboxWithTitle: "Show RSS icon in menu bar", target: nil, action: nil)
+    private let showMenuBarUnreadCountButton = NSButton(checkboxWithTitle: "Show unread count in menu bar", target: nil, action: nil)
+    private let showFeedUnreadCountButton = NSButton(checkboxWithTitle: "Show unread count in feeds", target: nil, action: nil)
+    private let globalUpdateAllButton = NSButton(checkboxWithTitle: "Update all feeds", target: nil, action: nil)
+    private let globalMarkAllReadButton = NSButton(checkboxWithTitle: "Mark all read", target: nil, action: nil)
+    private let globalMarkAllUnreadButton = NSButton(checkboxWithTitle: "Mark all unread", target: nil, action: nil)
+    private let globalShowAllUnreadButton = NSButton(checkboxWithTitle: "Show all unread", target: nil, action: nil)
     private let feedCountLabel = NSTextField(labelWithString: "")
     private var selectedFeedID: UUID?
     private var storeObserverID: UUID?
@@ -22,13 +30,13 @@ final class PreferencesWindowController: NSWindowController {
     init(store: FeedStore) {
         self.store = store
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 620),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "MicroRSS Settings"
-        window.minSize = NSSize(width: 760, height: 500)
+        window.minSize = NSSize(width: 760, height: 560)
         super.init(window: window)
         buildUI()
         reloadGeneralSettings()
@@ -98,10 +106,35 @@ final class PreferencesWindowController: NSWindowController {
         form.column(at: 0).xPlacement = .trailing
         form.column(at: 1).xPlacement = .leading
 
-        let options = NSStackView(views: [launchAtLoginButton, notificationsButton, statusHighlightButton])
+        let options = NSStackView(views: [launchAtLoginButton, notificationsButton])
         options.orientation = .vertical
         options.alignment = .leading
         options.spacing = 10
+
+        let appearanceTitle = sectionTitle("Appearance")
+        let appearanceOptions = NSStackView(views: [
+            showMenuBarIconButton,
+            showMenuBarUnreadCountButton,
+            showFeedUnreadCountButton,
+            statusHighlightButton
+        ])
+        appearanceOptions.orientation = .vertical
+        appearanceOptions.alignment = .leading
+        appearanceOptions.spacing = 10
+
+        let globalMenuTitle = sectionTitle("Global Menu")
+        let globalMenuOptions = NSStackView(views: [
+            globalUpdateAllButton,
+            globalMarkAllReadButton,
+            globalMarkAllUnreadButton,
+            globalShowAllUnreadButton
+        ])
+        globalMenuOptions.orientation = .vertical
+        globalMenuOptions.alignment = .leading
+        globalMenuOptions.spacing = 10
+
+        let resetIconCacheButton = NSButton(title: "Reset Icon Cache", target: self, action: #selector(resetIconCache))
+        resetIconCacheButton.bezelStyle = .rounded
 
         let saveButton = NSButton(title: "Save General Settings", target: self, action: #selector(saveGeneralSettings))
         saveButton.bezelStyle = .rounded
@@ -109,6 +142,11 @@ final class PreferencesWindowController: NSWindowController {
         root.addArrangedSubview(title)
         root.addArrangedSubview(form)
         root.addArrangedSubview(options)
+        root.addArrangedSubview(appearanceTitle)
+        root.addArrangedSubview(appearanceOptions)
+        root.addArrangedSubview(resetIconCacheButton)
+        root.addArrangedSubview(globalMenuTitle)
+        root.addArrangedSubview(globalMenuOptions)
         root.addArrangedSubview(saveButton)
 
         NSLayoutConstraint.activate([
@@ -219,11 +257,24 @@ final class PreferencesWindowController: NSWindowController {
         return label
     }
 
+    private func sectionTitle(_ title: String) -> NSTextField {
+        let label = NSTextField(labelWithString: title)
+        label.font = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
+        return label
+    }
+
     private func reloadGeneralSettings() {
         globalRefreshField.stringValue = "\(store.globalRefreshMinutes)"
         launchAtLoginButton.state = store.launchAtLogin ? .on : .off
         notificationsButton.state = store.notificationsEnabled ? .on : .off
         statusHighlightButton.state = store.highlightUnreadInStatusItem ? .on : .off
+        showMenuBarIconButton.state = store.showMenuBarIcon ? .on : .off
+        showMenuBarUnreadCountButton.state = store.showUnreadCountInMenuBar ? .on : .off
+        showFeedUnreadCountButton.state = store.showUnreadCountInFeeds ? .on : .off
+        globalUpdateAllButton.state = store.showGlobalUpdateAll ? .on : .off
+        globalMarkAllReadButton.state = store.showGlobalMarkAllRead ? .on : .off
+        globalMarkAllUnreadButton.state = store.showGlobalMarkAllUnread ? .on : .off
+        globalShowAllUnreadButton.state = store.showGlobalShowAllUnread ? .on : .off
     }
 
     private func reloadSelection() {
@@ -292,8 +343,19 @@ final class PreferencesWindowController: NSWindowController {
             globalRefreshMinutes: globalMinutes,
             launchAtLogin: launchAtLogin,
             notificationsEnabled: notificationsButton.state == .on,
-            highlightUnreadInStatusItem: statusHighlightButton.state == .on
+            highlightUnreadInStatusItem: statusHighlightButton.state == .on,
+            showMenuBarIcon: showMenuBarIconButton.state == .on,
+            showUnreadCountInMenuBar: showMenuBarUnreadCountButton.state == .on,
+            showUnreadCountInFeeds: showFeedUnreadCountButton.state == .on,
+            showGlobalUpdateAll: globalUpdateAllButton.state == .on,
+            showGlobalMarkAllRead: globalMarkAllReadButton.state == .on,
+            showGlobalMarkAllUnread: globalMarkAllUnreadButton.state == .on,
+            showGlobalShowAllUnread: globalShowAllUnreadButton.state == .on
         )
+    }
+
+    @objc private func resetIconCache() {
+        iconCache.reset()
     }
 
     private func editSelectedFeedColumn(_ identifier: String) {

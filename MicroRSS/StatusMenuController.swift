@@ -5,6 +5,7 @@ import WebKit
 final class StatusMenuController: NSObject {
     private let store: FeedStore
     private let service: RSSService
+    private let iconCache = FeedIconCache()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private var storiesByFeed: [UUID: [FeedStory]] = [:]
@@ -18,6 +19,9 @@ final class StatusMenuController: NSObject {
         self.store = store
         self.service = service
         super.init()
+        iconCache.didUpdate = { [weak self] in
+            self?.rebuildMenu()
+        }
         configureStatusItem()
         storeObserverID = store.observe { [weak self] in
             self?.rescheduleRefresh()
@@ -28,13 +32,14 @@ final class StatusMenuController: NSObject {
     }
 
     private func configureStatusItem() {
-        statusItem.button?.title = "RSS"
         statusItem.button?.toolTip = "MicroRSS"
         statusItem.menu = menu
+        updateStatusItem()
     }
 
     private func rebuildMenu() {
         menu.removeAllItems()
+        updateStatusItem()
 
         menu.addItem(generalMenuItem())
         menu.addItem(.separator())
@@ -43,21 +48,7 @@ final class StatusMenuController: NSObject {
         pause.target = self
         menu.addItem(pause)
 
-        let refreshAll = NSMenuItem(title: "Update all feeds", action: #selector(refreshAllFromMenu), keyEquivalent: "r")
-        refreshAll.target = self
-        refreshAll.isEnabled = !updatesPaused
-        menu.addItem(refreshAll)
-
-        let markAllRead = NSMenuItem(title: "Mark all read", action: #selector(markAllReadFromMenu), keyEquivalent: "")
-        markAllRead.target = self
-        markAllRead.isEnabled = allLoadedStories.contains { !store.isStoryRead($0) }
-        menu.addItem(markAllRead)
-
-        menu.addItem(.separator())
-
-        let feedsBrowser = NSMenuItem(title: "Feeds Browser...", action: #selector(openSettings), keyEquivalent: ",")
-        feedsBrowser.target = self
-        menu.addItem(feedsBrowser)
+        addGlobalMenuItems()
         menu.addItem(.separator())
 
         if store.feeds.isEmpty {
@@ -69,6 +60,7 @@ final class StatusMenuController: NSObject {
                 let stories = storiesByFeed[feed.id] ?? []
                 let unreadCount = store.unreadStories(in: stories).count
                 let item = NSMenuItem(title: feedMenuTitle(feed: feed, unreadCount: unreadCount), action: nil, keyEquivalent: "")
+                item.image = menuImage(for: feed)
                 let submenu = NSMenu()
 
                 addFeedActions(to: submenu, feed: feed, stories: stories)
@@ -98,6 +90,63 @@ final class StatusMenuController: NSObject {
         storiesByFeed.values.flatMap { $0 }
     }
 
+    private var totalUnreadCount: Int {
+        allLoadedStories.filter { !store.isStoryRead($0) }.count
+    }
+
+    private func updateStatusItem() {
+        guard let button = statusItem.button else { return }
+        let unreadCount = totalUnreadCount
+        let countTitle = store.showUnreadCountInMenuBar && unreadCount > 0 ? "\(unreadCount)" : ""
+
+        if store.showMenuBarIcon {
+            button.image = statusIcon(unreadCount: unreadCount)
+            button.imagePosition = countTitle.isEmpty ? .imageOnly : .imageLeft
+            button.title = countTitle
+        } else {
+            button.image = nil
+            button.title = countTitle.isEmpty ? "RSS" : "RSS \(countTitle)"
+        }
+    }
+
+    private func statusIcon(unreadCount: Int) -> NSImage? {
+        let hasUnread = unreadCount > 0
+        let name = hasUnread || !store.highlightUnreadInStatusItem ? "MenuIconUnread" : "MenuIconRead"
+        let image = NSImage(named: name)
+        image?.size = NSSize(width: 18, height: 18)
+        return image
+    }
+
+    private func addGlobalMenuItems() {
+        if store.showGlobalUpdateAll {
+            let refreshAll = NSMenuItem(title: "Update all feeds", action: #selector(refreshAllFromMenu), keyEquivalent: "r")
+            refreshAll.target = self
+            refreshAll.isEnabled = !updatesPaused
+            menu.addItem(refreshAll)
+        }
+
+        if store.showGlobalMarkAllRead {
+            let markAllRead = NSMenuItem(title: "Mark all read", action: #selector(markAllReadFromMenu), keyEquivalent: "")
+            markAllRead.target = self
+            markAllRead.isEnabled = allLoadedStories.contains { !store.isStoryRead($0) }
+            menu.addItem(markAllRead)
+        }
+
+        if store.showGlobalMarkAllUnread {
+            let markAllUnread = NSMenuItem(title: "Mark all unread", action: #selector(markAllUnreadFromMenu), keyEquivalent: "")
+            markAllUnread.target = self
+            markAllUnread.isEnabled = allLoadedStories.contains { store.isStoryRead($0) }
+            menu.addItem(markAllUnread)
+        }
+
+        if store.showGlobalShowAllUnread {
+            let showAllUnread = NSMenuItem(title: "Show all unread", action: #selector(showAllUnreadGloballyFromMenu), keyEquivalent: "")
+            showAllUnread.target = self
+            showAllUnread.isEnabled = totalUnreadCount > 0
+            menu.addItem(showAllUnread)
+        }
+    }
+
     private func generalMenuItem() -> NSMenuItem {
         let item = NSMenuItem(title: "General", action: nil, keyEquivalent: "")
         let submenu = NSMenu()
@@ -106,7 +155,7 @@ final class StatusMenuController: NSObject {
         about.target = self
         submenu.addItem(about)
 
-        let preferences = NSMenuItem(title: "Preferences...", action: #selector(openSettings), keyEquivalent: ",")
+        let preferences = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         preferences.target = self
         submenu.addItem(preferences)
 
@@ -143,7 +192,13 @@ final class StatusMenuController: NSObject {
     }
 
     private func feedMenuTitle(feed: Feed, unreadCount: Int) -> String {
-        unreadCount > 0 ? "\(feed.displayName) (\(unreadCount))" : feed.displayName
+        store.showUnreadCountInFeeds && unreadCount > 0 ? "\(feed.displayName) (\(unreadCount))" : feed.displayName
+    }
+
+    private func menuImage(for feed: Feed) -> NSImage? {
+        guard let image = iconCache.image(for: feed) else { return nil }
+        image.size = NSSize(width: 16, height: 16)
+        return image
     }
 
     private func storyMenuItem(_ story: FeedStory) -> NSMenuItem {
@@ -256,6 +311,14 @@ final class StatusMenuController: NSObject {
 
     @objc private func markAllReadFromMenu() {
         store.markStories(allLoadedStories, read: true)
+    }
+
+    @objc private func markAllUnreadFromMenu() {
+        store.markStories(allLoadedStories, read: false)
+    }
+
+    @objc private func showAllUnreadGloballyFromMenu() {
+        openStories(store.unreadStories(in: allLoadedStories))
     }
 
     @objc private func markFeedReadFromMenu(_ sender: NSMenuItem) {
