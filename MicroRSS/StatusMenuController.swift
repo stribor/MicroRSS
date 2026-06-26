@@ -70,7 +70,7 @@ final class StatusMenuController: NSObject {
                     empty.isEnabled = false
                     submenu.addItem(empty)
                 } else {
-                    for story in visibleStories(from: stories) {
+                    for story in stories {
                         submenu.addItem(storyMenuItem(story))
                     }
                 }
@@ -200,15 +200,6 @@ final class StatusMenuController: NSObject {
         guard let image = iconCache.image(for: feed) else { return nil }
         image.size = NSSize(width: 16, height: 16)
         return image
-    }
-
-    private func visibleStories(from stories: [FeedStory]) -> [FeedStory] {
-        let recentStories = Array(stories.prefix(20))
-        let recentStoryIDs = Set(recentStories.map(\.id))
-        let hiddenUnreadStories = stories.dropFirst(20).filter { story in
-            !recentStoryIDs.contains(story.id) && !store.isStoryRead(story)
-        }
-        return recentStories + hiddenUnreadStories
     }
 
     private func storyMenuItem(_ story: FeedStory) -> NSMenuItem {
