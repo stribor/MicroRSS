@@ -237,15 +237,13 @@ extension StatusMenuController: NSWindowDelegate {
 
 private final class StoryPreviewMenuView: NSView {
     private static let previewSize = NSSize(width: 640, height: 420)
+    private static let contentInsets = NSEdgeInsets(top: 18, left: 18, bottom: 18, right: 18)
 
-    private let story: FeedStory
-    private let scrollView = NSScrollView()
-    private let textView = NSTextView()
+    private let previewText: NSAttributedString
 
     init(story: FeedStory, feed: Feed?) {
-        self.story = story
+        previewText = Self.attributedPreview(for: story)
         super.init(frame: NSRect(origin: .zero, size: Self.previewSize))
-        buildPreview()
     }
 
     required init?(coder: NSCoder) {
@@ -256,39 +254,54 @@ private final class StoryPreviewMenuView: NSView {
         Self.previewSize
     }
 
-    private func buildPreview() {
-        scrollView.frame = bounds
-        scrollView.autoresizingMask = [.width, .height]
-        scrollView.hasVerticalScroller = true
-        scrollView.borderType = .noBorder
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.textBackgroundColor.setFill()
+        bounds.fill()
 
-        textView.frame = scrollView.bounds
-        textView.autoresizingMask = [.width]
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.drawsBackground = true
-        textView.backgroundColor = .textBackgroundColor
-        textView.textContainerInset = NSSize(width: 16, height: 16)
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: Self.previewSize.width - 32, height: .greatestFiniteMagnitude)
-        textView.textStorage?.setAttributedString(Self.attributedPreview(for: story))
-
-        scrollView.documentView = textView
-        addSubview(scrollView)
+        let insets = Self.contentInsets
+        let textRect = NSRect(
+            x: bounds.minX + insets.left,
+            y: bounds.minY + insets.bottom,
+            width: bounds.width - insets.left - insets.right,
+            height: bounds.height - insets.top - insets.bottom
+        )
+        previewText.draw(in: textRect)
     }
 
     private static func attributedPreview(for story: FeedStory) -> NSAttributedString {
-        let body = story.summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        let htmlBody = body.isEmpty ? "<p>No feed preview text is available for this article.</p>" : body
-        let html = """
-        <!doctype html><html><head><meta charset="utf-8"><style>
-        body { font-family: -apple-system; font-size: 14px; line-height: 1.35; }
-        h1 { font-size: 18px; margin: 0 0 14px 0; }
-        img { max-width: 580px; height: auto; }
-        </style></head><body><h1>\(story.title.escapedHTML)</h1>\(htmlBody)</body></html>
-        """
+        let title = story.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = story.summary.htmlStripped.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = body.isEmpty ? "No feed preview text is available for this article." : body
 
-        guard let data = html.data(using: .utf8),
+        let result = NSMutableAttributedString(
+            string: "\(title)\n\n",
+            attributes: [
+                .font: NSFont.boldSystemFont(ofSize: 18),
+                .foregroundColor: NSColor.labelColor
+            ]
+        )
+        result.append(NSAttributedString(
+            string: text,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 14),
+                .foregroundColor: NSColor.labelColor
+            ]
+        ))
+        result.addAttributes([
+            .paragraphStyle: {
+                let style = NSMutableParagraphStyle()
+                style.lineSpacing = 3
+                return style
+            }()
+        ], range: NSRange(location: 0, length: result.length))
+        return result
+    }
+}
+
+private extension String {
+    var htmlStripped: String {
+        guard !isEmpty else { return "" }
+        guard let data = data(using: .utf8),
               let attributed = try? NSAttributedString(
                 data: data,
                 options: [
@@ -297,19 +310,16 @@ private final class StoryPreviewMenuView: NSView {
                 ],
                 documentAttributes: nil
               ) else {
-            return NSAttributedString(string: "\(story.title)\n\n\(body)")
+            return self
         }
-        return attributed
+        return attributed.string
     }
 }
 
 @MainActor
 enum WebPreviewSession {
-    private static let processPool = WKProcessPool()
-
     static func makeConfiguration() -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
-        configuration.processPool = processPool
         configuration.websiteDataStore = .default()
         return configuration
     }
