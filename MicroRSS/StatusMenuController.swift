@@ -237,6 +237,7 @@ final class StatusMenuController: NSObject {
         refreshTasks.removeAll()
         guard !updatesPaused else { return }
         for feed in store.feeds {
+            guard refreshMinutes(for: feed.id) > 0 else { continue }
             refreshTasks[feed.id] = Task { [weak self] in
                 await self?.refreshLoop(feedID: feed.id)
             }
@@ -246,10 +247,15 @@ final class StatusMenuController: NSObject {
     private func refreshLoop(feedID: UUID) async {
         while !Task.isCancelled {
             await refreshFeed(id: feedID)
-            let minutes = store.feeds.first(where: { $0.id == feedID })?.refreshMinutes ?? store.globalRefreshMinutes
-            let seconds = max(1, minutes) * 60
+            let minutes = refreshMinutes(for: feedID)
+            guard minutes > 0 else { return }
+            let seconds = minutes * 60
             try? await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
         }
+    }
+
+    private func refreshMinutes(for feedID: UUID) -> Int {
+        store.feeds.first(where: { $0.id == feedID })?.refreshMinutes ?? store.globalRefreshMinutes
     }
 
     @MainActor

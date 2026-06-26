@@ -84,7 +84,7 @@ final class FeedStore {
         showGlobalMarkAllUnread: Bool,
         showGlobalShowAllUnread: Bool
     ) {
-        self.globalRefreshMinutes = max(1, globalRefreshMinutes)
+        self.globalRefreshMinutes = max(0, globalRefreshMinutes)
         self.launchAtLogin = launchAtLogin
         self.notificationsEnabled = notificationsEnabled
         self.highlightUnreadInStatusItem = highlightUnreadInStatusItem
@@ -99,7 +99,7 @@ final class FeedStore {
     }
 
     func updateGlobalRefresh(minutes: Int) {
-        globalRefreshMinutes = max(1, minutes)
+        globalRefreshMinutes = max(0, minutes)
         save()
     }
 
@@ -115,7 +115,7 @@ final class FeedStore {
     }
 
     func update(globalRefreshMinutes: Int, feed: Feed?) {
-        self.globalRefreshMinutes = max(1, globalRefreshMinutes)
+        self.globalRefreshMinutes = max(0, globalRefreshMinutes)
         if let feed, let index = feeds.firstIndex(where: { $0.id == feed.id }) {
             feeds[index] = feed
         }

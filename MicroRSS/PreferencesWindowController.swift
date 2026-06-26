@@ -119,13 +119,13 @@ final class PreferencesWindowController: NSWindowController {
         root.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(root)
 
-        globalRefreshField.placeholderString = "30"
+        globalRefreshField.placeholderString = "30 or Off"
         configureSingleLineField(globalRefreshField)
 
         let form = NSGridView()
         form.rowSpacing = 12
         form.columnSpacing = 12
-        form.addRow(with: [label("Global refresh (min)"), globalRefreshField])
+        form.addRow(with: [label("Global refresh"), globalRefreshField])
         form.column(at: 0).xPlacement = .trailing
         form.column(at: 1).xPlacement = .leading
 
@@ -172,7 +172,7 @@ final class PreferencesWindowController: NSWindowController {
             root.topAnchor.constraint(equalTo: container.topAnchor, constant: 28),
             root.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -28),
             root.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -28),
-            globalRefreshField.widthAnchor.constraint(equalToConstant: 72)
+            globalRefreshField.widthAnchor.constraint(equalToConstant: 96)
         ])
 
         return container
@@ -337,8 +337,12 @@ final class PreferencesWindowController: NSWindowController {
         return label
     }
 
+    private func globalRefreshPlaceholder() -> String {
+        store.globalRefreshMinutes == 0 ? "Global: Off" : "Global: \(store.globalRefreshMinutes)m"
+    }
+
     private func reloadGeneralSettings() {
-        globalRefreshField.stringValue = "\(store.globalRefreshMinutes)"
+        globalRefreshField.stringValue = refreshDisplayValue(store.globalRefreshMinutes)
         launchAtLoginButton.state = store.launchAtLogin ? .on : .off
         notificationsButton.state = store.notificationsEnabled ? .on : .off
         statusHighlightButton.state = store.highlightUnreadInStatusItem ? .on : .off
@@ -409,7 +413,7 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     @objc private func applyGeneralSettingsFromControl() {
-        let globalMinutes = Int(globalRefreshField.stringValue) ?? store.globalRefreshMinutes
+        let globalMinutes = refreshMinutes(from: globalRefreshField.stringValue) ?? store.globalRefreshMinutes
         let launchAtLogin = launchAtLoginButton.state == .on
         guard updateLaunchAtLogin(enabled: launchAtLogin) else { return }
 
@@ -556,8 +560,8 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
             label.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
             label.alignment = .right
             label.lineBreakMode = .byTruncatingTail
-            label.placeholderString = "\(store.globalRefreshMinutes)m"
-            label.stringValue = feed.refreshMinutes.map(String.init) ?? ""
+            label.placeholderString = globalRefreshPlaceholder()
+            label.stringValue = feed.refreshMinutes.map(refreshDisplayValue) ?? ""
         default:
             label.placeholderString = nil
             label.stringValue = ""
@@ -637,7 +641,14 @@ extension PreferencesWindowController: NSTextFieldDelegate {
             }
             feed.url = url
         case "refresh":
-            feed.refreshMinutes = Int(value).flatMap { $0 > 0 ? $0 : nil }
+            if value.isEmpty {
+                feed.refreshMinutes = nil
+            } else if let minutes = refreshMinutes(from: value) {
+                feed.refreshMinutes = minutes
+            } else {
+                tableView.reloadData(forRowIndexes: IndexSet(integer: row), columnIndexes: IndexSet(integer: column))
+                return
+            }
         default:
             return
         }
@@ -646,4 +657,16 @@ extension PreferencesWindowController: NSTextFieldDelegate {
         store.updateFeed(feed)
         tableView.reloadData()
     }
+}
+
+private func refreshDisplayValue(_ minutes: Int) -> String {
+    minutes == 0 ? "Off" : "\(minutes)"
+}
+
+private func refreshMinutes(from value: String) -> Int? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return nil }
+    if trimmed.caseInsensitiveCompare("off") == .orderedSame { return 0 }
+    guard let minutes = Int(trimmed) else { return nil }
+    return minutes >= 0 ? minutes : nil
 }
