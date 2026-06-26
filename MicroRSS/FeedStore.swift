@@ -43,6 +43,14 @@ final class FeedStore {
         save()
     }
 
+    func update(globalRefreshMinutes: Int, feed: Feed?) {
+        self.globalRefreshMinutes = max(1, globalRefreshMinutes)
+        if let feed, let index = feeds.firstIndex(where: { $0.id == feed.id }) {
+            feeds[index] = feed
+        }
+        save()
+    }
+
     func removeFeed(id: UUID) {
         feeds.removeAll { $0.id == id }
         save()

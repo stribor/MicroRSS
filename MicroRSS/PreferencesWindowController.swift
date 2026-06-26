@@ -14,12 +14,13 @@ final class PreferencesWindowController: NSWindowController {
     init(store: FeedStore) {
         self.store = store
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 420),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 820, height: 460),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "MicroRSS Settings"
+        window.minSize = NSSize(width: 760, height: 420)
         super.init(window: window)
         buildUI()
         reloadSelection()
@@ -49,6 +50,8 @@ final class PreferencesWindowController: NSWindowController {
 
         buildFeedList(in: left)
         buildEditor(in: right)
+        left.widthAnchor.constraint(greaterThanOrEqualToConstant: 320).isActive = true
+        right.widthAnchor.constraint(greaterThanOrEqualToConstant: 400).isActive = true
 
         NSLayoutConstraint.activate([
             split.leadingAnchor.constraint(equalTo: content.leadingAnchor),
@@ -56,14 +59,17 @@ final class PreferencesWindowController: NSWindowController {
             split.topAnchor.constraint(equalTo: content.topAnchor),
             split.bottomAnchor.constraint(equalTo: content.bottomAnchor)
         ])
-        split.setPosition(260, ofDividerAt: 0)
+        split.setPosition(330, ofDividerAt: 0)
     }
 
     private func buildFeedList(in container: NSView) {
         let scroll = NSScrollView()
         scroll.translatesAutoresizingMaskIntoConstraints = false
         scroll.hasVerticalScroller = true
-        tableView.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("feed")))
+        let feedColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("feed"))
+        feedColumn.minWidth = 260
+        feedColumn.width = 300
+        tableView.addTableColumn(feedColumn)
         tableView.headerView = nil
         tableView.delegate = self
         tableView.dataSource = self
@@ -102,11 +108,14 @@ final class PreferencesWindowController: NSWindowController {
         nameField.placeholderString = "Use feed title"
         urlField.placeholderString = "https://example.com/feed.xml"
         refreshField.placeholderString = "Use global"
+        [globalRefreshField, nameField, urlField, refreshField].forEach(configureSingleLineField)
 
         form.addRow(with: [label("Global refresh (min)"), globalRefreshField])
         form.addRow(with: [label("Feed name"), nameField])
         form.addRow(with: [label("Feed URL"), urlField])
         form.addRow(with: [label("Refresh override (min)"), refreshField])
+        form.column(at: 0).xPlacement = .trailing
+        form.column(at: 1).xPlacement = .fill
 
         let saveButton = NSButton(title: "Save", target: self, action: #selector(save))
         saveButton.bezelStyle = .rounded
@@ -119,9 +128,18 @@ final class PreferencesWindowController: NSWindowController {
             form.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 24),
             form.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -24),
             form.topAnchor.constraint(equalTo: container.topAnchor, constant: 24),
+            nameField.widthAnchor.constraint(greaterThanOrEqualToConstant: 360),
+            urlField.widthAnchor.constraint(greaterThanOrEqualToConstant: 360),
             saveButton.trailingAnchor.constraint(equalTo: form.trailingAnchor),
             saveButton.topAnchor.constraint(equalTo: form.bottomAnchor, constant: 20)
         ])
+    }
+
+    private func configureSingleLineField(_ field: NSTextField) {
+        field.usesSingleLineMode = true
+        field.cell?.wraps = false
+        field.cell?.isScrollable = true
+        field.cell?.lineBreakMode = .byTruncatingTail
     }
 
     private func label(_ title: String) -> NSTextField {
@@ -191,13 +209,20 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     @objc private func save() {
-        store.updateGlobalRefresh(minutes: Int(globalRefreshField.stringValue) ?? store.globalRefreshMinutes)
-        guard var feed = selectedFeed, let url = URL(string: urlField.stringValue) else { return }
-        feed.name = nameField.stringValue
-        feed.url = url
+        let globalMinutes = Int(globalRefreshField.stringValue) ?? store.globalRefreshMinutes
+        let name = nameField.stringValue
+        let urlString = urlField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let override = Int(refreshField.stringValue)
-        feed.refreshMinutes = override.flatMap { $0 > 0 ? $0 : nil }
-        store.updateFeed(feed)
+
+        var updatedFeed = selectedFeed
+        if var feed = updatedFeed, let url = URL(string: urlString), !urlString.isEmpty {
+            feed.name = name
+            feed.url = url
+            feed.refreshMinutes = override.flatMap { $0 > 0 ? $0 : nil }
+            updatedFeed = feed
+        }
+
+        store.update(globalRefreshMinutes: globalMinutes, feed: updatedFeed)
         tableView.reloadData()
     }
 }
