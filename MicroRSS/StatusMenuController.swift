@@ -165,6 +165,9 @@ final class StatusMenuController: NSObject {
         if preferencesWindowController == nil {
             preferencesWindowController = PreferencesWindowController(store: store)
         }
+        if preferencesWindowController?.window?.isVisible == false {
+            preferencesWindowController?.window?.center()
+        }
         preferencesWindowController?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
