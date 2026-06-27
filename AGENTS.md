@@ -17,7 +17,6 @@ MicroRSS is a minimal native macOS RSS reader inspired by RSS Menu and RSS Bot. 
 
 - Commit after each contextual change so the project history stays readable.
 - Keep commits focused: project setup, feed model, UI behavior, persistence, networking, and polish should be separate when possible.
-- Before changing behavior, build from the terminal with `xcodebuild -project MicroRSS.xcodeproj -scheme MicroRSS -configuration Debug -derivedDataPath DerivedData build`.
 - Do not add external dependencies unless the stability or size tradeoff is clearly worth it.
 - Prefer native Apple APIs and small local helpers.
 
