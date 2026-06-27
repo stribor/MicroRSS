@@ -24,6 +24,7 @@ final class PreferencesWindowController: NSWindowController {
     private let moveUpButton = NSButton(title: "Up", target: nil, action: nil)
     private let moveDownButton = NSButton(title: "Down", target: nil, action: nil)
     private let globalRefreshField = NSTextField()
+    private let previewMarkReadDelayField = NSTextField()
     private let launchAtLoginButton = NSButton(checkboxWithTitle: "Start at login", target: nil, action: nil)
     private let notificationsButton = NSButton(checkboxWithTitle: "Show notifications for new articles", target: nil, action: nil)
     private let statusHighlightButton = NSButton(checkboxWithTitle: "Dim menu bar icon when all articles are read", target: nil, action: nil)
@@ -148,11 +149,14 @@ final class PreferencesWindowController: NSWindowController {
 
         globalRefreshField.placeholderString = "30 or Off"
         configureSingleLineField(globalRefreshField)
+        previewMarkReadDelayField.placeholderString = "3 or Off"
+        configureSingleLineField(previewMarkReadDelayField)
 
         let form = NSGridView()
         form.rowSpacing = 12
         form.columnSpacing = 12
         form.addRow(with: [label("Global refresh"), globalRefreshField])
+        form.addRow(with: [label("Mark read delay (seconds)"), previewMarkReadDelayField])
         form.column(at: 0).xPlacement = .trailing
         form.column(at: 1).xPlacement = .leading
 
@@ -199,7 +203,8 @@ final class PreferencesWindowController: NSWindowController {
             root.topAnchor.constraint(equalTo: container.topAnchor, constant: 28),
             root.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -28),
             root.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -28),
-            globalRefreshField.widthAnchor.constraint(equalToConstant: 96)
+            globalRefreshField.widthAnchor.constraint(equalToConstant: 96),
+            previewMarkReadDelayField.widthAnchor.constraint(equalToConstant: 96)
         ])
 
         return container
@@ -209,6 +214,9 @@ final class PreferencesWindowController: NSWindowController {
         globalRefreshField.target = self
         globalRefreshField.action = #selector(applyGeneralSettingsFromControl)
         globalRefreshField.delegate = self
+        previewMarkReadDelayField.target = self
+        previewMarkReadDelayField.action = #selector(applyGeneralSettingsFromControl)
+        previewMarkReadDelayField.delegate = self
 
         [
             launchAtLoginButton,
@@ -380,6 +388,7 @@ final class PreferencesWindowController: NSWindowController {
 
     private func reloadGeneralSettings() {
         globalRefreshField.stringValue = refreshDisplayValue(store.globalRefreshMinutes)
+        previewMarkReadDelayField.stringValue = secondsDisplayValue(store.previewMarkReadDelaySeconds)
         launchAtLoginButton.state = store.launchAtLogin ? .on : .off
         notificationsButton.state = store.notificationsEnabled ? .on : .off
         statusHighlightButton.state = store.highlightUnreadInStatusItem ? .on : .off
@@ -487,6 +496,7 @@ final class PreferencesWindowController: NSWindowController {
 
     @objc private func applyGeneralSettingsFromControl() {
         let globalMinutes = refreshMinutes(from: globalRefreshField.stringValue) ?? store.globalRefreshMinutes
+        let markReadDelaySeconds = seconds(from: previewMarkReadDelayField.stringValue) ?? store.previewMarkReadDelaySeconds
         let launchAtLogin = launchAtLoginButton.state == .on
         guard updateLaunchAtLogin(enabled: launchAtLogin) else { return }
 
@@ -495,6 +505,7 @@ final class PreferencesWindowController: NSWindowController {
             launchAtLogin: launchAtLogin,
             notificationsEnabled: notificationsButton.state == .on,
             highlightUnreadInStatusItem: statusHighlightButton.state == .on,
+            previewMarkReadDelaySeconds: markReadDelaySeconds,
             showMenuBarIcon: showMenuBarIconButton.state == .on,
             showUnreadCountInMenuBar: showMenuBarUnreadCountButton.state == .on,
             showUnreadCountInFeeds: showFeedUnreadCountButton.state == .on,
@@ -855,7 +866,7 @@ extension PreferencesWindowController: NSTextFieldDelegate {
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
 
-        if field === globalRefreshField {
+        if field === globalRefreshField || field === previewMarkReadDelayField {
             applyGeneralSettingsFromControl()
             return
         }
@@ -919,6 +930,18 @@ private func refreshMinutes(from value: String) -> Int? {
     if trimmed.caseInsensitiveCompare("off") == .orderedSame { return 0 }
     guard let minutes = Int(trimmed) else { return nil }
     return minutes >= 0 ? minutes : nil
+}
+
+private func secondsDisplayValue(_ seconds: Int) -> String {
+    seconds == 0 ? "Off" : "\(seconds)"
+}
+
+private func seconds(from value: String) -> Int? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty { return nil }
+    if trimmed.caseInsensitiveCompare("off") == .orderedSame { return 0 }
+    guard let seconds = Int(trimmed) else { return nil }
+    return seconds >= 0 ? seconds : nil
 }
 
 private final class SelectThenEditTextField: NSTextField {

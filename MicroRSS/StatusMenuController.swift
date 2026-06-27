@@ -221,7 +221,7 @@ final class StatusMenuController: NSObject {
         item.state = store.isStoryRead(story) ? .off : .on
 
         let preview = NSMenuItem()
-        preview.view = StoryPreviewMenuView(story: story, feed: feed) { [weak self, weak item] story in
+        preview.view = StoryPreviewMenuView(story: story, feed: feed, markReadDelaySeconds: store.previewMarkReadDelaySeconds) { [weak self, weak item] story in
             self?.markStoryReadFromPreview(story, menuItem: item)
         }
         submenu.addItem(preview)
@@ -514,20 +514,21 @@ private struct PreviewWindowRecord {
 }
 
 private final class StoryPreviewMenuView: NSView {
-    private static let markReadDelay: UInt64 = 3_000_000_000
     private static let previewSize = NSSize(width: 640, height: 420)
 
     private let story: FeedStory
     private let feed: Feed?
+    private let markReadDelaySeconds: Int
     private let markRead: (FeedStory) -> Void
     private var webView: WKWebView?
     private var didStartLoading = false
     private var markReadTask: Task<Void, Never>?
     private var didMarkRead = false
 
-    init(story: FeedStory, feed: Feed?, markRead: @escaping (FeedStory) -> Void) {
+    init(story: FeedStory, feed: Feed?, markReadDelaySeconds: Int, markRead: @escaping (FeedStory) -> Void) {
         self.story = story
         self.feed = feed
+        self.markReadDelaySeconds = max(0, markReadDelaySeconds)
         self.markRead = markRead
         super.init(frame: NSRect(origin: .zero, size: Self.previewSize))
     }
@@ -580,9 +581,10 @@ private final class StoryPreviewMenuView: NSView {
     }
 
     private func scheduleMarkRead() {
-        guard !didMarkRead, markReadTask == nil else { return }
+        guard markReadDelaySeconds > 0, !didMarkRead, markReadTask == nil else { return }
+        let delay = markReadDelayNanoseconds()
         markReadTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: Self.markReadDelay)
+            try? await Task.sleep(nanoseconds: delay)
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard let self, self.window != nil, !self.didMarkRead else { return }
@@ -591,6 +593,11 @@ private final class StoryPreviewMenuView: NSView {
                 self.markReadTask = nil
             }
         }
+    }
+
+    private func markReadDelayNanoseconds() -> UInt64 {
+        let (delay, overflow) = UInt64(markReadDelaySeconds).multipliedReportingOverflow(by: 1_000_000_000)
+        return overflow ? UInt64.max : delay
     }
 
     private func cancelMarkReadTask() {

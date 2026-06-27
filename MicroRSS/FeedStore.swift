@@ -9,6 +9,7 @@ final class FeedStore {
         var launchAtLogin: Bool?
         var notificationsEnabled: Bool?
         var highlightUnreadInStatusItem: Bool?
+        var previewMarkReadDelaySeconds: Int?
         var readStoryIDs: Set<String>?
         var showMenuBarIcon: Bool?
         var showUnreadCountInMenuBar: Bool?
@@ -26,6 +27,7 @@ final class FeedStore {
     private(set) var launchAtLogin: Bool
     private(set) var notificationsEnabled: Bool
     private(set) var highlightUnreadInStatusItem: Bool
+    private(set) var previewMarkReadDelaySeconds: Int
     private(set) var showMenuBarIcon: Bool
     private(set) var showUnreadCountInMenuBar: Bool
     private(set) var showUnreadCountInFeeds: Bool
@@ -49,6 +51,7 @@ final class FeedStore {
             launchAtLogin = decoded.launchAtLogin ?? false
             notificationsEnabled = decoded.notificationsEnabled ?? true
             highlightUnreadInStatusItem = decoded.highlightUnreadInStatusItem ?? true
+            previewMarkReadDelaySeconds = decoded.previewMarkReadDelaySeconds ?? 3
             items = decoded.items ?? (decoded.feeds ?? []).map(FeedListItem.init(feed:))
             readStoryIDs = decoded.readStoryIDs ?? []
             showMenuBarIcon = decoded.showMenuBarIcon ?? true
@@ -63,6 +66,7 @@ final class FeedStore {
             launchAtLogin = false
             notificationsEnabled = true
             highlightUnreadInStatusItem = true
+            previewMarkReadDelaySeconds = 3
             items = []
             readStoryIDs = []
             showMenuBarIcon = true
@@ -80,6 +84,7 @@ final class FeedStore {
         launchAtLogin: Bool,
         notificationsEnabled: Bool,
         highlightUnreadInStatusItem: Bool,
+        previewMarkReadDelaySeconds: Int,
         showMenuBarIcon: Bool,
         showUnreadCountInMenuBar: Bool,
         showUnreadCountInFeeds: Bool,
@@ -92,6 +97,7 @@ final class FeedStore {
         self.launchAtLogin = launchAtLogin
         self.notificationsEnabled = notificationsEnabled
         self.highlightUnreadInStatusItem = highlightUnreadInStatusItem
+        self.previewMarkReadDelaySeconds = max(0, previewMarkReadDelaySeconds)
         self.showMenuBarIcon = showMenuBarIcon
         self.showUnreadCountInMenuBar = showUnreadCountInMenuBar
         self.showUnreadCountInFeeds = showUnreadCountInFeeds
@@ -240,6 +246,7 @@ final class FeedStore {
             launchAtLogin: launchAtLogin,
             notificationsEnabled: notificationsEnabled,
             highlightUnreadInStatusItem: highlightUnreadInStatusItem,
+            previewMarkReadDelaySeconds: previewMarkReadDelaySeconds,
             readStoryIDs: readStoryIDs,
             showMenuBarIcon: showMenuBarIcon,
             showUnreadCountInMenuBar: showUnreadCountInMenuBar,
