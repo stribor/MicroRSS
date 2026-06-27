@@ -155,10 +155,12 @@ final class PreferencesWindowController: NSWindowController {
         let form = NSGridView()
         form.rowSpacing = 12
         form.columnSpacing = 12
-        form.addRow(with: [label("Global refresh"), globalRefreshField])
+        form.addRow(with: [label("Global refresh (minutes)"), globalRefreshField])
         form.addRow(with: [label("Mark read delay (seconds)"), previewMarkReadDelayField])
         form.column(at: 0).xPlacement = .trailing
         form.column(at: 1).xPlacement = .leading
+        form.row(at: 0).yPlacement = .center
+        form.row(at: 1).yPlacement = .center
 
         let options = NSStackView(views: [launchAtLoginButton, notificationsButton])
         options.orientation = .vertical
@@ -364,15 +366,19 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     private func configureSingleLineField(_ field: NSTextField) {
+        field.alignment = .left
+        field.controlSize = .regular
         field.usesSingleLineMode = true
         field.cell?.wraps = false
         field.cell?.isScrollable = true
         field.cell?.lineBreakMode = .byTruncatingTail
+        field.cell?.controlSize = .regular
     }
 
     private func label(_ title: String) -> NSTextField {
         let label = NSTextField(labelWithString: title)
         label.alignment = .right
+        label.controlSize = .regular
         return label
     }
 
