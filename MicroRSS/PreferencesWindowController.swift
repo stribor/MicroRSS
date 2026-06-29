@@ -25,6 +25,8 @@ final class PreferencesWindowController: NSWindowController {
     private let moveDownButton = NSButton(title: "Down", target: nil, action: nil)
     private let globalRefreshField = NSTextField()
     private let previewMarkReadDelayField = NSTextField()
+    private let previewMenuWidthField = NSTextField()
+    private let previewMenuHeightField = NSTextField()
     private let launchAtLoginButton = NSButton(checkboxWithTitle: "Start at login", target: nil, action: nil)
     private let notificationsButton = NSButton(checkboxWithTitle: "Show notifications for new articles", target: nil, action: nil)
     private let statusHighlightButton = NSButton(checkboxWithTitle: "Dim menu bar icon when all articles are read", target: nil, action: nil)
@@ -151,16 +153,22 @@ final class PreferencesWindowController: NSWindowController {
         configureSingleLineField(globalRefreshField)
         previewMarkReadDelayField.placeholderString = "3 or Off"
         configureSingleLineField(previewMarkReadDelayField)
+        previewMenuWidthField.placeholderString = "800"
+        configureSingleLineField(previewMenuWidthField)
+        previewMenuHeightField.placeholderString = "600"
+        configureSingleLineField(previewMenuHeightField)
 
         let form = NSGridView()
         form.rowSpacing = 12
         form.columnSpacing = 12
         form.addRow(with: [label("Global refresh (minutes)"), globalRefreshField])
         form.addRow(with: [label("Mark read delay (seconds)"), previewMarkReadDelayField])
+        form.addRow(with: [label("HTML preview size"), previewSizeControls()])
         form.column(at: 0).xPlacement = .trailing
         form.column(at: 1).xPlacement = .leading
         form.row(at: 0).yPlacement = .center
         form.row(at: 1).yPlacement = .center
+        form.row(at: 2).yPlacement = .center
 
         let options = NSStackView(views: [launchAtLoginButton, notificationsButton])
         options.orientation = .vertical
@@ -206,7 +214,9 @@ final class PreferencesWindowController: NSWindowController {
             root.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -28),
             root.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -28),
             globalRefreshField.widthAnchor.constraint(equalToConstant: 96),
-            previewMarkReadDelayField.widthAnchor.constraint(equalToConstant: 96)
+            previewMarkReadDelayField.widthAnchor.constraint(equalToConstant: 96),
+            previewMenuWidthField.widthAnchor.constraint(equalToConstant: 72),
+            previewMenuHeightField.widthAnchor.constraint(equalToConstant: 72)
         ])
 
         return container
@@ -219,6 +229,12 @@ final class PreferencesWindowController: NSWindowController {
         previewMarkReadDelayField.target = self
         previewMarkReadDelayField.action = #selector(applyGeneralSettingsFromControl)
         previewMarkReadDelayField.delegate = self
+        previewMenuWidthField.target = self
+        previewMenuWidthField.action = #selector(applyGeneralSettingsFromControl)
+        previewMenuWidthField.delegate = self
+        previewMenuHeightField.target = self
+        previewMenuHeightField.action = #selector(applyGeneralSettingsFromControl)
+        previewMenuHeightField.delegate = self
 
         [
             launchAtLoginButton,
@@ -365,6 +381,17 @@ final class PreferencesWindowController: NSWindowController {
         return container
     }
 
+    private func previewSizeControls() -> NSView {
+        let separator = NSTextField(labelWithString: "x")
+        separator.textColor = .secondaryLabelColor
+
+        let stack = NSStackView(views: [previewMenuWidthField, separator, previewMenuHeightField])
+        stack.orientation = .horizontal
+        stack.alignment = .centerY
+        stack.spacing = 6
+        return stack
+    }
+
     private func configureSingleLineField(_ field: NSTextField) {
         field.alignment = .left
         field.controlSize = .regular
@@ -395,6 +422,8 @@ final class PreferencesWindowController: NSWindowController {
     private func reloadGeneralSettings() {
         globalRefreshField.stringValue = refreshDisplayValue(store.globalRefreshMinutes)
         previewMarkReadDelayField.stringValue = secondsDisplayValue(store.previewMarkReadDelaySeconds)
+        previewMenuWidthField.stringValue = "\(store.previewMenuWidth)"
+        previewMenuHeightField.stringValue = "\(store.previewMenuHeight)"
         launchAtLoginButton.state = store.launchAtLogin ? .on : .off
         notificationsButton.state = store.notificationsEnabled ? .on : .off
         statusHighlightButton.state = store.highlightUnreadInStatusItem ? .on : .off
@@ -503,6 +532,8 @@ final class PreferencesWindowController: NSWindowController {
     @objc private func applyGeneralSettingsFromControl() {
         let globalMinutes = refreshMinutes(from: globalRefreshField.stringValue) ?? store.globalRefreshMinutes
         let markReadDelaySeconds = seconds(from: previewMarkReadDelayField.stringValue) ?? store.previewMarkReadDelaySeconds
+        let previewMenuWidth = previewDimension(from: previewMenuWidthField.stringValue) ?? store.previewMenuWidth
+        let previewMenuHeight = previewDimension(from: previewMenuHeightField.stringValue) ?? store.previewMenuHeight
         let launchAtLogin = launchAtLoginButton.state == .on
         guard updateLaunchAtLogin(enabled: launchAtLogin) else { return }
 
@@ -512,6 +543,8 @@ final class PreferencesWindowController: NSWindowController {
             notificationsEnabled: notificationsButton.state == .on,
             highlightUnreadInStatusItem: statusHighlightButton.state == .on,
             previewMarkReadDelaySeconds: markReadDelaySeconds,
+            previewMenuWidth: previewMenuWidth,
+            previewMenuHeight: previewMenuHeight,
             showMenuBarIcon: showMenuBarIconButton.state == .on,
             showUnreadCountInMenuBar: showMenuBarUnreadCountButton.state == .on,
             showUnreadCountInFeeds: showFeedUnreadCountButton.state == .on,
@@ -948,6 +981,12 @@ private func seconds(from value: String) -> Int? {
     if trimmed.caseInsensitiveCompare("off") == .orderedSame { return 0 }
     guard let seconds = Int(trimmed) else { return nil }
     return seconds >= 0 ? seconds : nil
+}
+
+private func previewDimension(from value: String) -> Int? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard let dimension = Int(trimmed) else { return nil }
+    return dimension >= 240 ? dimension : nil
 }
 
 private final class SelectThenEditTextField: NSTextField {

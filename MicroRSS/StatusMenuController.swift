@@ -221,7 +221,12 @@ final class StatusMenuController: NSObject {
         item.state = store.isStoryRead(story) ? .off : .on
 
         let preview = NSMenuItem()
-        preview.view = StoryPreviewMenuView(story: story, feed: feed, markReadDelaySeconds: store.previewMarkReadDelaySeconds) { [weak self, weak item] story in
+        preview.view = StoryPreviewMenuView(
+            story: story,
+            feed: feed,
+            size: NSSize(width: store.previewMenuWidth, height: store.previewMenuHeight),
+            markReadDelaySeconds: store.previewMarkReadDelaySeconds
+        ) { [weak self, weak item] story in
             self?.markStoryReadFromPreview(story, menuItem: item)
         }
         submenu.addItem(preview)
@@ -514,10 +519,9 @@ private struct PreviewWindowRecord {
 }
 
 private final class StoryPreviewMenuView: NSView {
-    private static let previewSize = NSSize(width: 640, height: 420)
-
     private let story: FeedStory
     private let feed: Feed?
+    private let previewSize: NSSize
     private let markReadDelaySeconds: Int
     private let markRead: (FeedStory) -> Void
     private var webView: WKWebView?
@@ -525,12 +529,13 @@ private final class StoryPreviewMenuView: NSView {
     private var markReadTask: Task<Void, Never>?
     private var didMarkRead = false
 
-    init(story: FeedStory, feed: Feed?, markReadDelaySeconds: Int, markRead: @escaping (FeedStory) -> Void) {
+    init(story: FeedStory, feed: Feed?, size: NSSize, markReadDelaySeconds: Int, markRead: @escaping (FeedStory) -> Void) {
         self.story = story
         self.feed = feed
+        previewSize = NSSize(width: max(240, size.width), height: max(240, size.height))
         self.markReadDelaySeconds = max(0, markReadDelaySeconds)
         self.markRead = markRead
-        super.init(frame: NSRect(origin: .zero, size: Self.previewSize))
+        super.init(frame: NSRect(origin: .zero, size: previewSize))
     }
 
     required init?(coder: NSCoder) {
@@ -538,7 +543,7 @@ private final class StoryPreviewMenuView: NSView {
     }
 
     override var intrinsicContentSize: NSSize {
-        Self.previewSize
+        previewSize
     }
 
     override func draw(_ dirtyRect: NSRect) {

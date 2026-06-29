@@ -10,6 +10,8 @@ final class FeedStore {
         var notificationsEnabled: Bool?
         var highlightUnreadInStatusItem: Bool?
         var previewMarkReadDelaySeconds: Int?
+        var previewMenuWidth: Int?
+        var previewMenuHeight: Int?
         var readStoryIDs: Set<String>?
         var showMenuBarIcon: Bool?
         var showUnreadCountInMenuBar: Bool?
@@ -28,6 +30,8 @@ final class FeedStore {
     private(set) var notificationsEnabled: Bool
     private(set) var highlightUnreadInStatusItem: Bool
     private(set) var previewMarkReadDelaySeconds: Int
+    private(set) var previewMenuWidth: Int
+    private(set) var previewMenuHeight: Int
     private(set) var showMenuBarIcon: Bool
     private(set) var showUnreadCountInMenuBar: Bool
     private(set) var showUnreadCountInFeeds: Bool
@@ -52,6 +56,8 @@ final class FeedStore {
             notificationsEnabled = decoded.notificationsEnabled ?? true
             highlightUnreadInStatusItem = decoded.highlightUnreadInStatusItem ?? true
             previewMarkReadDelaySeconds = decoded.previewMarkReadDelaySeconds ?? 3
+            previewMenuWidth = Self.validPreviewMenuDimension(decoded.previewMenuWidth, defaultValue: 800)
+            previewMenuHeight = Self.validPreviewMenuDimension(decoded.previewMenuHeight, defaultValue: 600)
             items = decoded.items ?? (decoded.feeds ?? []).map(FeedListItem.init(feed:))
             readStoryIDs = decoded.readStoryIDs ?? []
             showMenuBarIcon = decoded.showMenuBarIcon ?? true
@@ -67,6 +73,8 @@ final class FeedStore {
             notificationsEnabled = true
             highlightUnreadInStatusItem = true
             previewMarkReadDelaySeconds = 3
+            previewMenuWidth = 800
+            previewMenuHeight = 600
             items = []
             readStoryIDs = []
             showMenuBarIcon = true
@@ -85,6 +93,8 @@ final class FeedStore {
         notificationsEnabled: Bool,
         highlightUnreadInStatusItem: Bool,
         previewMarkReadDelaySeconds: Int,
+        previewMenuWidth: Int,
+        previewMenuHeight: Int,
         showMenuBarIcon: Bool,
         showUnreadCountInMenuBar: Bool,
         showUnreadCountInFeeds: Bool,
@@ -98,6 +108,8 @@ final class FeedStore {
         self.notificationsEnabled = notificationsEnabled
         self.highlightUnreadInStatusItem = highlightUnreadInStatusItem
         self.previewMarkReadDelaySeconds = max(0, previewMarkReadDelaySeconds)
+        self.previewMenuWidth = Self.validPreviewMenuDimension(previewMenuWidth, defaultValue: self.previewMenuWidth)
+        self.previewMenuHeight = Self.validPreviewMenuDimension(previewMenuHeight, defaultValue: self.previewMenuHeight)
         self.showMenuBarIcon = showMenuBarIcon
         self.showUnreadCountInMenuBar = showUnreadCountInMenuBar
         self.showUnreadCountInFeeds = showUnreadCountInFeeds
@@ -247,6 +259,8 @@ final class FeedStore {
             notificationsEnabled: notificationsEnabled,
             highlightUnreadInStatusItem: highlightUnreadInStatusItem,
             previewMarkReadDelaySeconds: previewMarkReadDelaySeconds,
+            previewMenuWidth: previewMenuWidth,
+            previewMenuHeight: previewMenuHeight,
             readStoryIDs: readStoryIDs,
             showMenuBarIcon: showMenuBarIcon,
             showUnreadCountInMenuBar: showUnreadCountInMenuBar,
@@ -266,5 +280,10 @@ final class FeedStore {
 
     private func readID(for story: FeedStory) -> String {
         "\(story.sourceFeedID.uuidString)|\(story.id)"
+    }
+
+    private static func validPreviewMenuDimension(_ value: Int?, defaultValue: Int) -> Int {
+        guard let value else { return defaultValue }
+        return max(240, value)
     }
 }
