@@ -1,4 +1,5 @@
 import AppKit
+import UserNotifications
 import WebKit
 
 @MainActor
@@ -6,6 +7,7 @@ final class StatusMenuController: NSObject {
     private let store: FeedStore
     private let service: RSSService
     private let iconCache = FeedIconCache()
+    private let notificationController = FeedNotificationController()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private var storiesByFeed: [UUID: [FeedStory]] = [:]
@@ -277,13 +279,30 @@ final class StatusMenuController: NSObject {
         guard let feed = store.feeds.first(where: { $0.id == id }) else { return }
         do {
             let (stories, metadata) = try await service.fetch(feed: feed)
+            let previousStories = storiesByFeed[id]
+            let newStories = newStories(in: stories, previousStories: previousStories)
             storiesByFeed[id] = stories
             updateFeedMetadata(feed: feed, metadata: metadata)
+            if previousStories != nil, store.notificationsEnabled, !newStories.isEmpty {
+                let updatedFeed = store.feeds.first(where: { $0.id == id }) ?? feed
+                notificationController.showNotification(
+                    for: updatedFeed,
+                    newStories: newStories,
+                    feedDescription: metadata.description,
+                    attachmentURL: iconCache.notificationAttachmentURL(for: updatedFeed)
+                )
+            }
             rebuildMenu()
         } catch {
             storiesByFeed[id] = []
             rebuildMenu()
         }
+    }
+
+    private func newStories(in stories: [FeedStory], previousStories: [FeedStory]?) -> [FeedStory] {
+        guard let previousStories else { return [] }
+        let previousIDs = Set(previousStories.map(\.id))
+        return stories.filter { !previousIDs.contains($0.id) }
     }
 
     @MainActor
@@ -512,6 +531,66 @@ private struct PreviewWindowRecord {
     var controller: NSWindowController
 }
 
+@MainActor
+private final class FeedNotificationController {
+    private let center = UNUserNotificationCenter.current()
+    private var didRequestAuthorization = false
+
+    func showNotification(for feed: Feed, newStories: [FeedStory], feedDescription: String?, attachmentURL: URL?) {
+        Task {
+            guard await notificationsAllowed() else { return }
+
+            let content = UNMutableNotificationContent()
+            content.title = feed.displayName
+            content.subtitle = Self.subtitle(for: newStories)
+            content.body = Self.body(feedDescription: feedDescription, newStories: newStories)
+            content.sound = .default
+
+            if let attachmentURL,
+               let attachment = try? UNNotificationAttachment(identifier: feed.id.uuidString, url: attachmentURL) {
+                content.attachments = [attachment]
+            }
+
+            let request = UNNotificationRequest(
+                identifier: "\(feed.id.uuidString)-\(Date().timeIntervalSince1970)",
+                content: content,
+                trigger: nil
+            )
+            try? await center.add(request)
+        }
+    }
+
+    private func notificationsAllowed() async -> Bool {
+        let settings = await center.notificationSettings()
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            return true
+        case .notDetermined:
+            guard !didRequestAuthorization else { return false }
+            didRequestAuthorization = true
+            return (try? await center.requestAuthorization(options: [.alert, .sound])) == true
+        case .denied:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    private static func subtitle(for stories: [FeedStory]) -> String {
+        if stories.count == 1 {
+            return stories[0].title
+        }
+        return "\(stories.count) new stories"
+    }
+
+    private static func body(feedDescription: String?, newStories: [FeedStory]) -> String {
+        if let description = feedDescription?.notificationPlainText, !description.isEmpty {
+            return description
+        }
+        return newStories.prefix(3).map(\.title).joined(separator: "\n")
+    }
+}
+
 private final class StoryPreviewMenuView: NSView {
     private let story: FeedStory
     private let feed: Feed?
@@ -660,6 +739,18 @@ enum WebPreviewSession {
 }
 
 private extension String {
+    var notificationPlainText: String {
+        replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
     var escapedHTML: String {
         replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")

@@ -29,6 +29,7 @@ final class RSSService: NSObject, @unchecked Sendable {
 
 struct FeedMetadata {
     var title: String?
+    var description: String?
     var siteURL: URL?
     var iconURL: URL?
 }
@@ -39,7 +40,7 @@ private final class FeedXMLParser: NSObject, XMLParserDelegate {
     private let parser: XMLParser
 
     private var stories: [FeedStory] = []
-    private var metadata = FeedMetadata(title: nil, siteURL: nil, iconURL: nil)
+    private var metadata = FeedMetadata(title: nil, description: nil, siteURL: nil, iconURL: nil)
     private var currentElementStack: [String] = []
     private var text = ""
     private var inItem = false
@@ -125,6 +126,8 @@ private final class FeedXMLParser: NSObject, XMLParserDelegate {
             switch element {
             case "title":
                 if metadata.title == nil, !value.isEmpty { metadata.title = value }
+            case "description", "subtitle", "tagline":
+                if metadata.description == nil, !value.isEmpty { metadata.description = value }
             case "link":
                 if metadata.siteURL == nil, !value.isEmpty {
                     metadata.siteURL = URL(string: value, relativeTo: feedURL)?.absoluteURL
