@@ -288,8 +288,7 @@ final class StatusMenuController: NSObject {
                 notificationController.showNotification(
                     for: updatedFeed,
                     newStories: newStories,
-                    feedDescription: metadata.description,
-                    attachmentURL: iconCache.notificationAttachmentURL(for: updatedFeed)
+                    feedDescription: metadata.description
                 )
             }
             rebuildMenu()
@@ -536,7 +535,7 @@ private final class FeedNotificationController {
     private let center = UNUserNotificationCenter.current()
     private var didRequestAuthorization = false
 
-    func showNotification(for feed: Feed, newStories: [FeedStory], feedDescription: String?, attachmentURL: URL?) {
+    func showNotification(for feed: Feed, newStories: [FeedStory], feedDescription: String?) {
         Task {
             guard await notificationsAllowed() else { return }
 
@@ -545,11 +544,6 @@ private final class FeedNotificationController {
             content.subtitle = Self.subtitle(for: newStories)
             content.body = Self.body(feedDescription: feedDescription, newStories: newStories)
             content.sound = .default
-
-            if let attachmentURL,
-               let attachment = try? UNNotificationAttachment(identifier: feed.id.uuidString, url: attachmentURL) {
-                content.attachments = [attachment]
-            }
 
             let request = UNNotificationRequest(
                 identifier: "\(feed.id.uuidString)-\(Date().timeIntervalSince1970)",

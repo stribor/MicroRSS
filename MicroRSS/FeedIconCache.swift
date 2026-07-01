@@ -41,21 +41,6 @@ final class FeedIconCache {
         return nil
     }
 
-    func notificationAttachmentURL(for feed: Feed) -> URL? {
-        guard let image = image(for: feed),
-              let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:]) else { return nil }
-
-        let url = cacheDirectory.appendingPathComponent("\(feed.id.uuidString)-notification.png")
-        do {
-            try png.write(to: url, options: .atomic)
-            return url
-        } catch {
-            return nil
-        }
-    }
-
     func reset() {
         clearMemory()
         try? FileManager.default.removeItem(at: cacheDirectory)
