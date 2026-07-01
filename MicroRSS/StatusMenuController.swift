@@ -478,7 +478,11 @@ final class StatusMenuController: NSObject {
 
     static func storyRequest(for story: FeedStory, feed: Feed?) -> URLRequest? {
         guard let url = story.link else { return nil }
-        return URLRequest(url: url)
+        var request = URLRequest(url: url)
+        if let feed {
+            request.setValue(feed.url.absoluteString, forHTTPHeaderField: "Referer")
+        }
+        return request
     }
 
     private func isPreviewWindowOpen(for story: FeedStory) -> Bool {
