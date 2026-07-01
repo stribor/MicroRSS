@@ -450,7 +450,7 @@ final class StatusMenuController: NSObject {
 
     @objc private func openStory(_ sender: NSMenuItem) {
         if let context = sender.representedObject as? FeedStoryContext,
-           let url = Self.storyURL(for: context.story, feed: context.feed) {
+           let url = context.story.link {
             store.markStory(context.story, read: true)
             NSWorkspace.shared.open(url)
         } else if let story = sender.representedObject as? FeedStory, let url = story.link {
@@ -461,8 +461,7 @@ final class StatusMenuController: NSObject {
 
     private func openStories(_ stories: [FeedStory]) {
         for story in stories {
-            guard let feed = store.feeds.first(where: { $0.id == story.sourceFeedID }),
-                  let url = Self.storyURL(for: story, feed: feed) ?? story.link else { continue }
+            guard let url = story.link else { continue }
             store.markStory(story, read: true)
             NSWorkspace.shared.open(url)
         }
@@ -477,18 +476,9 @@ final class StatusMenuController: NSObject {
         NSApp.terminate(nil)
     }
 
-    static func storyURL(for story: FeedStory, feed: Feed) -> URL? {
-        guard let link = story.link else { return nil }
-        return link.appendingMissingQueryItems(from: feed.url)
-    }
-
     static func storyRequest(for story: FeedStory, feed: Feed?) -> URLRequest? {
-        guard let url = feed.flatMap({ storyURL(for: story, feed: $0) }) ?? story.link else { return nil }
-        var request = URLRequest(url: url)
-        if let feed {
-            request.setValue(feed.url.absoluteString, forHTTPHeaderField: "Referer")
-        }
-        return request
+        guard let url = story.link else { return nil }
+        return URLRequest(url: url)
     }
 
     private func isPreviewWindowOpen(for story: FeedStory) -> Bool {
@@ -662,25 +652,6 @@ enum WebPreviewSession {
         store.setCookie(cookie) {
             setCookies(Array(cookies.dropFirst()), in: store, completion: completion)
         }
-    }
-}
-
-
-private extension URL {
-    func appendingMissingQueryItems(from sourceURL: URL) -> URL {
-        guard let sourceItems = URLComponents(url: sourceURL, resolvingAgainstBaseURL: false)?.queryItems,
-              !sourceItems.isEmpty,
-              var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
-            return self
-        }
-
-        var items = components.queryItems ?? []
-        let existingNames = Set(items.map(\.name))
-        let missingItems = sourceItems.filter { !existingNames.contains($0.name) }
-        guard !missingItems.isEmpty else { return self }
-        items.append(contentsOf: missingItems)
-        components.queryItems = items
-        return components.url ?? self
     }
 }
 
