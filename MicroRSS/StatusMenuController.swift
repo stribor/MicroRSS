@@ -11,6 +11,7 @@ final class StatusMenuController: NSObject {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
     private var storiesByFeed: [UUID: [FeedStory]] = [:]
+    private var knownStoryIDsByFeed: [UUID: Set<String>] = [:]
     private var refreshTasks: [UUID: Task<Void, Never>] = [:]
     private var preferencesWindowController: PreferencesWindowController?
     private var previewWindows: [PreviewWindowRecord] = []
@@ -279,11 +280,10 @@ final class StatusMenuController: NSObject {
         guard let feed = store.feeds.first(where: { $0.id == id }) else { return }
         do {
             let (stories, metadata) = try await service.fetch(feed: feed)
-            let previousStories = storiesByFeed[id]
-            let newStories = newStories(in: stories, previousStories: previousStories)
+            let newStories = newStories(in: stories, feedID: id)
             storiesByFeed[id] = stories
             updateFeedMetadata(feed: feed, metadata: metadata)
-            if previousStories != nil, store.notificationsEnabled, !newStories.isEmpty {
+            if store.notificationsEnabled, !newStories.isEmpty {
                 let updatedFeed = store.feeds.first(where: { $0.id == id }) ?? feed
                 notificationController.showNotification(
                     for: updatedFeed,
@@ -293,15 +293,17 @@ final class StatusMenuController: NSObject {
             }
             rebuildMenu()
         } catch {
-            storiesByFeed[id] = []
             rebuildMenu()
         }
     }
 
-    private func newStories(in stories: [FeedStory], previousStories: [FeedStory]?) -> [FeedStory] {
-        guard let previousStories else { return [] }
-        let previousIDs = Set(previousStories.map(\.id))
-        return stories.filter { !previousIDs.contains($0.id) }
+    private func newStories(in stories: [FeedStory], feedID: UUID) -> [FeedStory] {
+        let knownIDs = knownStoryIDsByFeed[feedID]
+        let fetchedIDs = Set(stories.map(\.id))
+        knownStoryIDsByFeed[feedID] = (knownIDs ?? []).union(fetchedIDs)
+
+        guard let knownIDs else { return [] }
+        return stories.filter { !knownIDs.contains($0.id) }
     }
 
     @MainActor
