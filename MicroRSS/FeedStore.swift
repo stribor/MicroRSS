@@ -135,6 +135,40 @@ final class FeedStore {
         save()
     }
 
+    @discardableResult
+    func importFeeds(_ importedFeeds: [Feed]) -> FeedImportResult {
+        var result = FeedImportResult(added: 0, updated: 0)
+        var indexesByURL: [String: Int] = [:]
+        for (index, item) in items.enumerated() {
+            guard let feed = item.feed else { continue }
+            let key = FeedTransfer.canonicalURL(feed.url)
+            if indexesByURL[key] == nil {
+                indexesByURL[key] = index
+            }
+        }
+
+        for importedFeed in importedFeeds {
+            let key = FeedTransfer.canonicalURL(importedFeed.url)
+            if let index = indexesByURL[key], case .feed(var existingFeed) = items[index] {
+                guard !importedFeed.name.isEmpty, existingFeed.name != importedFeed.name else { continue }
+                existingFeed.name = importedFeed.name
+                items[index] = .feed(existingFeed)
+                result.updated += 1
+            } else {
+                var newFeed = importedFeed
+                newFeed.id = UUID()
+                items.append(.feed(newFeed))
+                indexesByURL[key] = items.count - 1
+                result.added += 1
+            }
+        }
+
+        if result.added > 0 || result.updated > 0 {
+            save()
+        }
+        return result
+    }
+
     func updateFeed(_ feed: Feed) {
         guard let index = items.firstIndex(where: { $0.id == feed.id }) else { return }
         items[index] = .feed(feed)

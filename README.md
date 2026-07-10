@@ -7,6 +7,7 @@ MicroRSS is a minimal native macOS RSS reader that lives in the menu bar. It is 
 - Menu bar first: no Dock icon and no main window by default.
 - Native AppKit interface with a settings window for feed management.
 - Add, edit, remove, reorder, and group feeds with separators.
+- Import and export feed subscriptions using OPML.
 - Global refresh interval with optional per-feed overrides.
 - Feed submenus with unread indicators, feed icons, and current stories.
 - Inline WebKit story previews from the menu.
@@ -57,7 +58,7 @@ MicroRSS appears in the macOS menu bar. Open the menu, choose **General > Settin
 
 The Settings window includes:
 
-- **Feeds**: manage feed names, URLs, refresh overrides, separators, and ordering.
+- **Feeds**: manage feed names, URLs, refresh overrides, separators, ordering, and OPML import/export.
 - **General**: configure refresh timing, launch at login, notifications, preview size, unread counts, menu bar icon behavior, and global menu actions.
 - **About**: app version and short project description.
 

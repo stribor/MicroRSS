@@ -1,5 +1,6 @@
 import AppKit
 import ServiceManagement
+import UniformTypeIdentifiers
 
 @MainActor
 final class PreferencesWindowController: NSWindowController {
@@ -350,6 +351,8 @@ final class PreferencesWindowController: NSWindowController {
     private func buildFeedControls() -> NSView {
         let addButton = NSButton(title: "+", target: self, action: #selector(addFeed))
         let addSeparatorButton = NSButton(title: "Separator", target: self, action: #selector(addSeparator))
+        let importButton = NSButton(title: "Import…", target: self, action: #selector(importFeeds))
+        let exportButton = NSButton(title: "Export…", target: self, action: #selector(exportFeeds))
         let spacer = NSView()
 
         removeItemButton.target = self
@@ -362,7 +365,7 @@ final class PreferencesWindowController: NSWindowController {
         feedCountLabel.font = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
         feedCountLabel.alignment = .center
 
-        let controls = NSStackView(views: [addButton, addSeparatorButton, removeItemButton, moveUpButton, moveDownButton, spacer, feedCountLabel])
+        let controls = NSStackView(views: [addButton, addSeparatorButton, removeItemButton, moveUpButton, moveDownButton, importButton, exportButton, spacer, feedCountLabel])
         controls.orientation = .horizontal
         controls.spacing = 8
         controls.translatesAutoresizingMaskIntoConstraints = false
@@ -496,6 +499,51 @@ final class PreferencesWindowController: NSWindowController {
         reloadSelection()
         selectPane(identifier: TabID.feeds)
         editSelectedFeedColumn("name")
+    }
+
+    @objc private func exportFeeds() {
+        let panel = NSSavePanel()
+        panel.title = "Export Feeds"
+        panel.nameFieldStringValue = "MicroRSS Feeds.opml"
+        panel.allowedContentTypes = [UTType(filenameExtension: "opml") ?? .xml]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            try FeedTransfer.exportOPML(feeds: store.feeds).write(to: url, options: .atomic)
+        } catch {
+            presentError(error)
+        }
+    }
+
+    @objc private func importFeeds() {
+        let panel = NSOpenPanel()
+        panel.title = "Import Feeds"
+        panel.allowedContentTypes = [UTType(filenameExtension: "opml") ?? .xml, .xml]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            let importedFeeds = try FeedTransfer.importOPML(data: Data(contentsOf: url))
+            let result = store.importFeeds(importedFeeds)
+            tableView.reloadData()
+            reloadSelection()
+            showImportResult(result)
+        } catch {
+            presentError(error)
+        }
+    }
+
+    private func showImportResult(_ result: FeedImportResult) {
+        let alert = NSAlert()
+        alert.messageText = "Feed Import Complete"
+        if result.added == 0 && result.updated == 0 {
+            alert.informativeText = "All feeds already exist. No changes were needed."
+        } else {
+            alert.informativeText = "Added \(result.added) and updated \(result.updated) \(result.updated == 1 ? "feed title" : "feed titles")."
+        }
+        alert.addButton(withTitle: "OK")
+        alert.beginSheetModal(for: window!)
     }
 
     @objc private func removeSelectedItem() {
