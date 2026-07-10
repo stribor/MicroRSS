@@ -25,6 +25,7 @@ final class FeedStore {
     private let defaults: UserDefaults
     private let key = "MicroRSS.FeedStore.v1"
 
+    let isFreshInstall: Bool
     private(set) var globalRefreshMinutes: Int
     private(set) var launchAtLogin: Bool
     private(set) var notificationsEnabled: Bool
@@ -49,6 +50,7 @@ final class FeedStore {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        isFreshInstall = defaults.data(forKey: key) == nil
         if let data = defaults.data(forKey: key),
            let decoded = try? JSONDecoder().decode(StoredState.self, from: data) {
             globalRefreshMinutes = decoded.globalRefreshMinutes

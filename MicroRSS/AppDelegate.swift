@@ -1,6 +1,7 @@
 import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let firstLaunchCompletedKey = "MicroRSS.FirstLaunchCompleted"
     private var statusController: StatusMenuController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -8,6 +9,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let store = FeedStore()
         let service = RSSService()
         statusController = StatusMenuController(store: store, service: service)
+
+        let defaults = UserDefaults.standard
+        if store.isFreshInstall && !defaults.bool(forKey: firstLaunchCompletedKey) {
+            defaults.set(true, forKey: firstLaunchCompletedKey)
+            DispatchQueue.main.async { [weak self] in
+                self?.statusController?.showSettings()
+            }
+        }
     }
 }
 

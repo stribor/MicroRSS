@@ -117,6 +117,7 @@ final class StatusMenuController: NSObject {
         let hasUnread = unreadCount > 0
         let name = hasUnread || !store.highlightUnreadInStatusItem ? "MenuIconUnread" : "MenuIconRead"
         let image = NSImage(named: name)
+            ?? NSImage(systemSymbolName: "dot.radiowaves.left.and.right", accessibilityDescription: "MicroRSS")
         image?.size = NSSize(width: 18, height: 18)
         return image
     }
@@ -438,7 +439,7 @@ final class StatusMenuController: NSObject {
         }
     }
 
-    @objc private func openSettings() {
+    func showSettings() {
         if preferencesWindowController == nil {
             preferencesWindowController = PreferencesWindowController(store: store)
         }
@@ -447,6 +448,10 @@ final class StatusMenuController: NSObject {
         }
         preferencesWindowController?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func openSettings() {
+        showSettings()
     }
 
     @objc private func openPreview(_ sender: NSMenuItem) {
