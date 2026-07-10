@@ -80,7 +80,7 @@ final class StatusMenuController: NSObject {
                     submenu.addItem(empty)
                 } else {
                     for story in stories {
-                        submenu.addItem(storyMenuItem(story))
+                        storyMenuItems(story).forEach(submenu.addItem)
                     }
                 }
 
@@ -212,8 +212,21 @@ final class StatusMenuController: NSObject {
         return image
     }
 
-    private func storyMenuItem(_ story: FeedStory) -> NSMenuItem {
-        let item = NSMenuItem(title: story.title, action: #selector(openStory(_:)), keyEquivalent: "")
+    private func storyMenuItems(_ story: FeedStory) -> [NSMenuItem] {
+        let fullTitle = singleLineStoryTitle(story.title)
+        let shortenedTitle = limitedStoryMenuTitle(fullTitle)
+        let normalItem = storyMenuItem(story, title: shortenedTitle)
+        guard shortenedTitle != fullTitle else { return [normalItem] }
+
+        let alternateItem = storyMenuItem(story, title: fullTitle)
+        alternateItem.isAlternate = true
+        alternateItem.keyEquivalentModifierMask = [.option]
+        return [normalItem, alternateItem]
+    }
+
+    private func storyMenuItem(_ story: FeedStory, title: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(openStory(_:)), keyEquivalent: "")
+        item.toolTip = story.title
         item.target = self
         let submenu = NSMenu()
         let feed = store.feeds.first { $0.id == story.sourceFeedID }
@@ -248,6 +261,20 @@ final class StatusMenuController: NSObject {
 
         item.submenu = submenu
         return item
+    }
+
+    private func singleLineStoryTitle(_ title: String) -> String {
+        title
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    private func limitedStoryMenuTitle(_ title: String) -> String {
+        let limit = store.storyMenuTitleLength
+        guard limit > 0, title.count > limit else { return title }
+        guard limit > 1 else { return "…" }
+        return String(title.prefix(limit - 1)) + "…"
     }
 
     private func rescheduleRefresh() {

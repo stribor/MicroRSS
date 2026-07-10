@@ -28,6 +28,7 @@ final class PreferencesWindowController: NSWindowController {
     private let previewMarkReadDelayField = NSTextField()
     private let previewMenuWidthField = NSTextField()
     private let previewMenuHeightField = NSTextField()
+    private let storyMenuTitleLengthField = NSTextField()
     private let launchAtLoginButton = NSButton(checkboxWithTitle: "Start at login", target: nil, action: nil)
     private let notificationsButton = NSButton(checkboxWithTitle: "Show notifications for new articles", target: nil, action: nil)
     private let statusHighlightButton = NSButton(checkboxWithTitle: "Dim menu bar icon when all articles are read", target: nil, action: nil)
@@ -158,6 +159,8 @@ final class PreferencesWindowController: NSWindowController {
         configureSingleLineField(previewMenuWidthField)
         previewMenuHeightField.placeholderString = "600"
         configureSingleLineField(previewMenuHeightField)
+        storyMenuTitleLengthField.placeholderString = "80 or Off"
+        configureSingleLineField(storyMenuTitleLengthField)
 
         let form = NSGridView()
         form.rowSpacing = 12
@@ -165,11 +168,13 @@ final class PreferencesWindowController: NSWindowController {
         form.addRow(with: [label("Global refresh (minutes)"), globalRefreshField])
         form.addRow(with: [label("Mark read delay (seconds)"), previewMarkReadDelayField])
         form.addRow(with: [label("HTML preview size"), previewSizeControls()])
+        form.addRow(with: [label("Story title length (characters)"), storyMenuTitleLengthField])
         form.column(at: 0).xPlacement = .trailing
         form.column(at: 1).xPlacement = .leading
         form.row(at: 0).yPlacement = .center
         form.row(at: 1).yPlacement = .center
         form.row(at: 2).yPlacement = .center
+        form.row(at: 3).yPlacement = .center
 
         let options = NSStackView(views: [launchAtLoginButton, notificationsButton])
         options.orientation = .vertical
@@ -217,7 +222,8 @@ final class PreferencesWindowController: NSWindowController {
             globalRefreshField.widthAnchor.constraint(equalToConstant: 96),
             previewMarkReadDelayField.widthAnchor.constraint(equalToConstant: 96),
             previewMenuWidthField.widthAnchor.constraint(equalToConstant: 72),
-            previewMenuHeightField.widthAnchor.constraint(equalToConstant: 72)
+            previewMenuHeightField.widthAnchor.constraint(equalToConstant: 72),
+            storyMenuTitleLengthField.widthAnchor.constraint(equalToConstant: 96)
         ])
 
         return container
@@ -236,6 +242,9 @@ final class PreferencesWindowController: NSWindowController {
         previewMenuHeightField.target = self
         previewMenuHeightField.action = #selector(applyGeneralSettingsFromControl)
         previewMenuHeightField.delegate = self
+        storyMenuTitleLengthField.target = self
+        storyMenuTitleLengthField.action = #selector(applyGeneralSettingsFromControl)
+        storyMenuTitleLengthField.delegate = self
 
         [
             launchAtLoginButton,
@@ -427,6 +436,7 @@ final class PreferencesWindowController: NSWindowController {
         previewMarkReadDelayField.stringValue = secondsDisplayValue(store.previewMarkReadDelaySeconds)
         previewMenuWidthField.stringValue = "\(store.previewMenuWidth)"
         previewMenuHeightField.stringValue = "\(store.previewMenuHeight)"
+        storyMenuTitleLengthField.stringValue = store.storyMenuTitleLength == 0 ? "Off" : "\(store.storyMenuTitleLength)"
         launchAtLoginButton.state = store.launchAtLogin ? .on : .off
         notificationsButton.state = store.notificationsEnabled ? .on : .off
         statusHighlightButton.state = store.highlightUnreadInStatusItem ? .on : .off
@@ -582,6 +592,7 @@ final class PreferencesWindowController: NSWindowController {
         let markReadDelaySeconds = seconds(from: previewMarkReadDelayField.stringValue) ?? store.previewMarkReadDelaySeconds
         let previewMenuWidth = previewDimension(from: previewMenuWidthField.stringValue) ?? store.previewMenuWidth
         let previewMenuHeight = previewDimension(from: previewMenuHeightField.stringValue) ?? store.previewMenuHeight
+        let storyMenuTitleLength = seconds(from: storyMenuTitleLengthField.stringValue) ?? store.storyMenuTitleLength
         let launchAtLogin = launchAtLoginButton.state == .on
         guard updateLaunchAtLogin(enabled: launchAtLogin) else { return }
 
@@ -593,6 +604,7 @@ final class PreferencesWindowController: NSWindowController {
             previewMarkReadDelaySeconds: markReadDelaySeconds,
             previewMenuWidth: previewMenuWidth,
             previewMenuHeight: previewMenuHeight,
+            storyMenuTitleLength: storyMenuTitleLength,
             showMenuBarIcon: showMenuBarIconButton.state == .on,
             showUnreadCountInMenuBar: showMenuBarUnreadCountButton.state == .on,
             showUnreadCountInFeeds: showFeedUnreadCountButton.state == .on,
@@ -953,7 +965,7 @@ extension PreferencesWindowController: NSTextFieldDelegate {
     func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
 
-        if field === globalRefreshField || field === previewMarkReadDelayField {
+        if field === globalRefreshField || field === previewMarkReadDelayField || field === storyMenuTitleLengthField {
             applyGeneralSettingsFromControl()
             return
         }

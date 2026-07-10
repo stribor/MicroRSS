@@ -50,6 +50,7 @@ MicroRSS appears in the macOS menu bar. Open the menu, choose **General > Settin
 - Use **Update all feeds** or a feed's **Refresh Now** command to fetch stories immediately.
 - Hover or open a story submenu to see an HTML preview.
 - Choose a story title to open the article in your default browser.
+- Hold Option while browsing feeds to temporarily show full story titles when a title-length limit is enabled.
 - Choose **Open Preview Window** to read in a dedicated WebKit window.
 - Use the read/unread actions to manage unread state globally or per feed.
 - Use **Pause Updates** to stop scheduled refreshes temporarily.
@@ -59,7 +60,7 @@ MicroRSS appears in the macOS menu bar. Open the menu, choose **General > Settin
 The Settings window includes:
 
 - **Feeds**: manage feed names, URLs, refresh overrides, separators, ordering, and OPML import/export.
-- **General**: configure refresh timing, launch at login, notifications, preview size, unread counts, menu bar icon behavior, and global menu actions.
+- **General**: configure refresh timing, launch at login, notifications, preview size, story title length, unread counts, menu bar icon behavior, and global menu actions.
 - **About**: app version and short project description.
 
 ## Project Layout

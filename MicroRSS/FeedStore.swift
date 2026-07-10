@@ -12,6 +12,7 @@ final class FeedStore {
         var previewMarkReadDelaySeconds: Int?
         var previewMenuWidth: Int?
         var previewMenuHeight: Int?
+        var storyMenuTitleLength: Int?
         var readStoryIDs: Set<String>?
         var showMenuBarIcon: Bool?
         var showUnreadCountInMenuBar: Bool?
@@ -33,6 +34,7 @@ final class FeedStore {
     private(set) var previewMarkReadDelaySeconds: Int
     private(set) var previewMenuWidth: Int
     private(set) var previewMenuHeight: Int
+    private(set) var storyMenuTitleLength: Int
     private(set) var showMenuBarIcon: Bool
     private(set) var showUnreadCountInMenuBar: Bool
     private(set) var showUnreadCountInFeeds: Bool
@@ -60,6 +62,7 @@ final class FeedStore {
             previewMarkReadDelaySeconds = decoded.previewMarkReadDelaySeconds ?? 3
             previewMenuWidth = Self.validPreviewMenuDimension(decoded.previewMenuWidth, defaultValue: 800)
             previewMenuHeight = Self.validPreviewMenuDimension(decoded.previewMenuHeight, defaultValue: 600)
+            storyMenuTitleLength = max(0, decoded.storyMenuTitleLength ?? 0)
             items = decoded.items ?? (decoded.feeds ?? []).map(FeedListItem.init(feed:))
             readStoryIDs = decoded.readStoryIDs ?? []
             showMenuBarIcon = decoded.showMenuBarIcon ?? true
@@ -77,6 +80,7 @@ final class FeedStore {
             previewMarkReadDelaySeconds = 3
             previewMenuWidth = 800
             previewMenuHeight = 600
+            storyMenuTitleLength = 0
             items = []
             readStoryIDs = []
             showMenuBarIcon = true
@@ -97,6 +101,7 @@ final class FeedStore {
         previewMarkReadDelaySeconds: Int,
         previewMenuWidth: Int,
         previewMenuHeight: Int,
+        storyMenuTitleLength: Int,
         showMenuBarIcon: Bool,
         showUnreadCountInMenuBar: Bool,
         showUnreadCountInFeeds: Bool,
@@ -112,6 +117,7 @@ final class FeedStore {
         self.previewMarkReadDelaySeconds = max(0, previewMarkReadDelaySeconds)
         self.previewMenuWidth = Self.validPreviewMenuDimension(previewMenuWidth, defaultValue: self.previewMenuWidth)
         self.previewMenuHeight = Self.validPreviewMenuDimension(previewMenuHeight, defaultValue: self.previewMenuHeight)
+        self.storyMenuTitleLength = max(0, storyMenuTitleLength)
         self.showMenuBarIcon = showMenuBarIcon
         self.showUnreadCountInMenuBar = showUnreadCountInMenuBar
         self.showUnreadCountInFeeds = showUnreadCountInFeeds
@@ -297,6 +303,7 @@ final class FeedStore {
             previewMarkReadDelaySeconds: previewMarkReadDelaySeconds,
             previewMenuWidth: previewMenuWidth,
             previewMenuHeight: previewMenuHeight,
+            storyMenuTitleLength: storyMenuTitleLength,
             readStoryIDs: readStoryIDs,
             showMenuBarIcon: showMenuBarIcon,
             showUnreadCountInMenuBar: showUnreadCountInMenuBar,
