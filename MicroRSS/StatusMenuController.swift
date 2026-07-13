@@ -51,7 +51,9 @@ final class StatusMenuController: NSObject {
         pause.target = self
         menu.addItem(pause)
 
-        addGlobalMenuItems()
+        if let allFeeds = allFeedsMenuItem() {
+            menu.addItem(allFeeds)
+        }
         menu.addItem(.separator())
 
         if store.items.isEmpty {
@@ -122,34 +124,41 @@ final class StatusMenuController: NSObject {
         return image
     }
 
-    private func addGlobalMenuItems() {
+    private func allFeedsMenuItem() -> NSMenuItem? {
+        let item = NSMenuItem(title: "All Feeds", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+
         if store.showGlobalUpdateAll {
-            let refreshAll = NSMenuItem(title: "Update all feeds", action: #selector(refreshAllFromMenu), keyEquivalent: "r")
+            let refreshAll = NSMenuItem(title: "Update", action: #selector(refreshAllFromMenu), keyEquivalent: "r")
             refreshAll.target = self
             refreshAll.isEnabled = !updatesPaused
-            menu.addItem(refreshAll)
+            submenu.addItem(refreshAll)
         }
 
         if store.showGlobalMarkAllRead {
             let markAllRead = NSMenuItem(title: "Mark all read", action: #selector(markAllReadFromMenu), keyEquivalent: "")
             markAllRead.target = self
             markAllRead.isEnabled = allLoadedStories.contains { !store.isStoryRead($0) }
-            menu.addItem(markAllRead)
+            submenu.addItem(markAllRead)
         }
 
         if store.showGlobalMarkAllUnread {
             let markAllUnread = NSMenuItem(title: "Mark all unread", action: #selector(markAllUnreadFromMenu), keyEquivalent: "")
             markAllUnread.target = self
             markAllUnread.isEnabled = allLoadedStories.contains { store.isStoryRead($0) }
-            menu.addItem(markAllUnread)
+            submenu.addItem(markAllUnread)
         }
 
         if store.showGlobalShowAllUnread {
             let showAllUnread = NSMenuItem(title: "Show all unread", action: #selector(showAllUnreadGloballyFromMenu), keyEquivalent: "")
             showAllUnread.target = self
             showAllUnread.isEnabled = totalUnreadCount > 0
-            menu.addItem(showAllUnread)
+            submenu.addItem(showAllUnread)
         }
+
+        guard !submenu.items.isEmpty else { return nil }
+        item.submenu = submenu
+        return item
     }
 
     private func generalMenuItem() -> NSMenuItem {
