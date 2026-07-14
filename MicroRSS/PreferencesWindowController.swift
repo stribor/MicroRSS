@@ -30,6 +30,7 @@ final class PreferencesWindowController: NSWindowController {
     private let previewMenuHeightField = NSTextField()
     private let storyMenuTitleLengthField = NSTextField()
     private let launchAtLoginButton = NSButton(checkboxWithTitle: "Start at login", target: nil, action: nil)
+    private let hideDockIconButton = NSButton(checkboxWithTitle: "Hide Dock Icon", target: nil, action: nil)
     private let notificationsButton = NSButton(checkboxWithTitle: "Show notifications for new articles", target: nil, action: nil)
     private let statusHighlightButton = NSButton(checkboxWithTitle: "Dim menu bar icon when all articles are read", target: nil, action: nil)
     private let showMenuBarIconButton = NSButton(checkboxWithTitle: "Show RSS icon in menu bar", target: nil, action: nil)
@@ -183,6 +184,7 @@ final class PreferencesWindowController: NSWindowController {
 
         let appearanceTitle = sectionTitle("Appearance")
         let appearanceOptions = NSStackView(views: [
+            dockIconOption(),
             showMenuBarIconButton,
             showMenuBarUnreadCountButton,
             showFeedUnreadCountButton,
@@ -248,6 +250,7 @@ final class PreferencesWindowController: NSWindowController {
 
         [
             launchAtLoginButton,
+            hideDockIconButton,
             notificationsButton,
             statusHighlightButton,
             showMenuBarIconButton,
@@ -427,6 +430,18 @@ final class PreferencesWindowController: NSWindowController {
         return label
     }
 
+    private func dockIconOption() -> NSView {
+        let description = NSTextField(labelWithString: "Hide the Dock icon when all windows are closed.")
+        description.textColor = .secondaryLabelColor
+        description.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+
+        let stack = NSStackView(views: [hideDockIconButton, description])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 2
+        return stack
+    }
+
     private func globalRefreshPlaceholder() -> String {
         store.globalRefreshMinutes == 0 ? "Global: Off" : "Global: \(store.globalRefreshMinutes)m"
     }
@@ -438,6 +453,7 @@ final class PreferencesWindowController: NSWindowController {
         previewMenuHeightField.stringValue = "\(store.previewMenuHeight)"
         storyMenuTitleLengthField.stringValue = store.storyMenuTitleLength == 0 ? "Off" : "\(store.storyMenuTitleLength)"
         launchAtLoginButton.state = store.launchAtLogin ? .on : .off
+        hideDockIconButton.state = store.hideDockIcon ? .on : .off
         notificationsButton.state = store.notificationsEnabled ? .on : .off
         statusHighlightButton.state = store.highlightUnreadInStatusItem ? .on : .off
         showMenuBarIconButton.state = store.showMenuBarIcon ? .on : .off
@@ -599,6 +615,7 @@ final class PreferencesWindowController: NSWindowController {
         store.updateGeneral(
             globalRefreshMinutes: globalMinutes,
             launchAtLogin: launchAtLogin,
+            hideDockIcon: hideDockIconButton.state == .on,
             notificationsEnabled: notificationsButton.state == .on,
             highlightUnreadInStatusItem: statusHighlightButton.state == .on,
             previewMarkReadDelaySeconds: markReadDelaySeconds,

@@ -7,6 +7,7 @@ final class FeedStore {
         var feeds: [Feed]?
         var items: [FeedListItem]?
         var launchAtLogin: Bool?
+        var hideDockIcon: Bool?
         var notificationsEnabled: Bool?
         var highlightUnreadInStatusItem: Bool?
         var previewMarkReadDelaySeconds: Int?
@@ -29,6 +30,7 @@ final class FeedStore {
     let isFreshInstall: Bool
     private(set) var globalRefreshMinutes: Int
     private(set) var launchAtLogin: Bool
+    private(set) var hideDockIcon: Bool
     private(set) var notificationsEnabled: Bool
     private(set) var highlightUnreadInStatusItem: Bool
     private(set) var previewMarkReadDelaySeconds: Int
@@ -57,6 +59,7 @@ final class FeedStore {
            let decoded = try? JSONDecoder().decode(StoredState.self, from: data) {
             globalRefreshMinutes = decoded.globalRefreshMinutes
             launchAtLogin = decoded.launchAtLogin ?? false
+            hideDockIcon = decoded.hideDockIcon ?? true
             notificationsEnabled = decoded.notificationsEnabled ?? true
             highlightUnreadInStatusItem = decoded.highlightUnreadInStatusItem ?? true
             previewMarkReadDelaySeconds = decoded.previewMarkReadDelaySeconds ?? 3
@@ -75,6 +78,7 @@ final class FeedStore {
         } else {
             globalRefreshMinutes = 30
             launchAtLogin = false
+            hideDockIcon = true
             notificationsEnabled = true
             highlightUnreadInStatusItem = true
             previewMarkReadDelaySeconds = 3
@@ -96,6 +100,7 @@ final class FeedStore {
     func updateGeneral(
         globalRefreshMinutes: Int,
         launchAtLogin: Bool,
+        hideDockIcon: Bool,
         notificationsEnabled: Bool,
         highlightUnreadInStatusItem: Bool,
         previewMarkReadDelaySeconds: Int,
@@ -112,6 +117,7 @@ final class FeedStore {
     ) {
         self.globalRefreshMinutes = max(0, globalRefreshMinutes)
         self.launchAtLogin = launchAtLogin
+        self.hideDockIcon = hideDockIcon
         self.notificationsEnabled = notificationsEnabled
         self.highlightUnreadInStatusItem = highlightUnreadInStatusItem
         self.previewMarkReadDelaySeconds = max(0, previewMarkReadDelaySeconds)
@@ -298,6 +304,7 @@ final class FeedStore {
             feeds: feeds,
             items: items,
             launchAtLogin: launchAtLogin,
+            hideDockIcon: hideDockIcon,
             notificationsEnabled: notificationsEnabled,
             highlightUnreadInStatusItem: highlightUnreadInStatusItem,
             previewMarkReadDelaySeconds: previewMarkReadDelaySeconds,

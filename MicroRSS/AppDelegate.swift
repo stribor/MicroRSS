@@ -3,11 +3,13 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let firstLaunchCompletedKey = "MicroRSS.FirstLaunchCompleted"
     private var statusController: StatusMenuController?
+    private var dockIconController: DockIconController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = ApplicationMenu.make()
         let store = FeedStore()
         let service = RSSService()
+        dockIconController = DockIconController(store: store)
         statusController = StatusMenuController(store: store, service: service)
 
         let defaults = UserDefaults.standard
@@ -17,6 +19,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.statusController?.showSettings()
             }
         }
+    }
+}
+
+@MainActor
+private final class DockIconController: NSObject {
+    private let store: FeedStore
+    private var storeObserverID: UUID?
+
+    init(store: FeedStore) {
+        self.store = store
+        super.init()
+
+        let center = NotificationCenter.default
+        center.addObserver(self, selector: #selector(windowVisibilityDidChange), name: NSWindow.didBecomeKeyNotification, object: nil)
+        center.addObserver(self, selector: #selector(windowVisibilityDidChange), name: NSWindow.didResignKeyNotification, object: nil)
+        center.addObserver(self, selector: #selector(windowWillClose), name: NSWindow.willCloseNotification, object: nil)
+        storeObserverID = store.observe { [weak self] in
+            self?.updateActivationPolicy()
+        }
+        updateActivationPolicy()
+    }
+
+    deinit {
+        let observerID = storeObserverID
+        let observedStore = store
+        NotificationCenter.default.removeObserver(self)
+        if let observerID {
+            MainActor.assumeIsolated {
+                observedStore.removeObserver(id: observerID)
+            }
+        }
+    }
+
+    @objc private func windowVisibilityDidChange(_ notification: Notification) {
+        guard notification.name == NSWindow.didBecomeKeyNotification else {
+            scheduleActivationPolicyUpdate()
+            return
+        }
+        updateActivationPolicy()
+    }
+
+    @objc private func windowWillClose(_ notification: Notification) {
+        scheduleActivationPolicyUpdate()
+    }
+
+    private func scheduleActivationPolicyUpdate() {
+        DispatchQueue.main.async { [weak self] in
+            self?.updateActivationPolicy()
+        }
+    }
+
+    private func updateActivationPolicy() {
+        let hasOpenWindow = NSApp.windows.contains { window in
+            (window.isVisible || window.isMiniaturized) && window.styleMask.contains(.titled)
+        }
+        let policy: NSApplication.ActivationPolicy = store.hideDockIcon && !hasOpenWindow ? .accessory : .regular
+        guard NSApp.activationPolicy() != policy else { return }
+        NSApp.setActivationPolicy(policy)
     }
 }
 

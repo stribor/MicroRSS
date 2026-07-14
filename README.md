@@ -60,7 +60,7 @@ MicroRSS appears in the macOS menu bar. Open the menu, choose **General > Settin
 The Settings window includes:
 
 - **Feeds**: manage feed names, URLs, refresh overrides, separators, ordering, and OPML import/export.
-- **General**: configure refresh timing, launch at login, notifications, preview size, story title length, unread counts, menu bar icon behavior, and global menu actions.
+- **General**: configure refresh timing, launch at login, Dock icon visibility, notifications, preview size, story title length, unread counts, menu bar icon behavior, and global menu actions.
 - **About**: app version and short project description.
 
 ## Project Layout
