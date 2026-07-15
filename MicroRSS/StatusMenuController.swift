@@ -22,6 +22,9 @@ final class StatusMenuController: NSObject {
         self.store = store
         self.service = service
         super.init()
+        notificationController.articleHandler = { [weak self] article in
+            self?.openNotificationArticle(article)
+        }
         iconCache.didUpdate = { [weak self] in
             self?.rebuildMenu()
         }
@@ -520,6 +523,13 @@ final class StatusMenuController: NSObject {
         }
     }
 
+    private func openNotificationArticle(_ article: NotificationArticle) {
+        if let story = storiesByFeed[article.feedID]?.first(where: { $0.id == article.storyID }) {
+            store.markStory(story, read: true)
+        }
+        NSWorkspace.shared.open(article.url)
+    }
+
     private func openStories(_ stories: [FeedStory]) {
         for story in stories {
             guard let url = story.link else { continue }
@@ -573,10 +583,22 @@ private struct PreviewWindowRecord {
     var controller: NSWindowController
 }
 
+private struct NotificationArticle: Sendable {
+    var feedID: UUID
+    var storyID: String
+    var url: URL
+}
+
 @MainActor
-private final class FeedNotificationController {
+private final class FeedNotificationController: NSObject, UNUserNotificationCenterDelegate {
     private let center = UNUserNotificationCenter.current()
     private var didRequestAuthorization = false
+    var articleHandler: ((NotificationArticle) -> Void)?
+
+    override init() {
+        super.init()
+        center.delegate = self
+    }
 
     func showNotification(for feed: Feed, newStories: [FeedStory], feedDescription: String?) {
         Task {
@@ -587,6 +609,13 @@ private final class FeedNotificationController {
             content.subtitle = Self.subtitle(for: newStories)
             content.body = Self.body(feedDescription: feedDescription, newStories: newStories)
             content.sound = .default
+            if let story = newStories.first, let url = story.link {
+                content.userInfo = [
+                    "feedID": story.sourceFeedID.uuidString,
+                    "storyID": story.id,
+                    "articleURL": url.absoluteString
+                ]
+            }
 
             let request = UNNotificationRequest(
                 identifier: "\(feed.id.uuidString)-\(Date().timeIntervalSince1970)",
@@ -594,6 +623,26 @@ private final class FeedNotificationController {
                 trigger: nil
             )
             try? await center.add(request)
+        }
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+              let article = Self.article(from: response.notification.request.content.userInfo) else {
+            return
+        }
+        await MainActor.run { [weak self] in
+            self?.articleHandler?(article)
         }
     }
 
@@ -625,6 +674,17 @@ private final class FeedNotificationController {
             return description
         }
         return newStories.prefix(3).map(\.title).joined(separator: "\n")
+    }
+
+    nonisolated private static func article(from userInfo: [AnyHashable: Any]) -> NotificationArticle? {
+        guard let feedIDString = userInfo["feedID"] as? String,
+              let feedID = UUID(uuidString: feedIDString),
+              let storyID = userInfo["storyID"] as? String,
+              let urlString = userInfo["articleURL"] as? String,
+              let url = URL(string: urlString) else {
+            return nil
+        }
+        return NotificationArticle(feedID: feedID, storyID: storyID, url: url)
     }
 }
 

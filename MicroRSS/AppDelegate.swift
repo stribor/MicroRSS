@@ -4,8 +4,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let firstLaunchCompletedKey = "MicroRSS.FirstLaunchCompleted"
     private var statusController: StatusMenuController?
     private var dockIconController: DockIconController?
+    private var shouldInitialize = true
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return }
+        let currentProcessIdentifier = ProcessInfo.processInfo.processIdentifier
+        guard let existingApplication = NSRunningApplication
+            .runningApplications(withBundleIdentifier: bundleIdentifier)
+            .first(where: { $0.processIdentifier != currentProcessIdentifier }) else {
+            return
+        }
+
+        shouldInitialize = false
+        existingApplication.activate(options: [])
+        NSApp.terminate(nil)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard shouldInitialize else { return }
         NSApp.mainMenu = ApplicationMenu.make()
         let store = FeedStore()
         let service = RSSService()
