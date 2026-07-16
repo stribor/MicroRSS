@@ -39,6 +39,7 @@ final class StatusMenuController: NSObject {
 
     private func configureStatusItem() {
         statusItem.button?.toolTip = "MicroRSS"
+        menu.delegate = self
         statusItem.menu = menu
         updateStatusItem()
     }
@@ -241,6 +242,7 @@ final class StatusMenuController: NSObject {
         item.toolTip = story.title
         item.target = self
         let submenu = NSMenu()
+        submenu.delegate = self
         let feed = store.feeds.first { $0.id == story.sourceFeedID }
         if let feed {
             item.representedObject = FeedStoryContext(story: story, feed: feed)
@@ -566,6 +568,27 @@ final class StatusMenuController: NSObject {
     }
 }
 
+extension StatusMenuController: NSMenuDelegate {
+    func menuWillOpen(_ menu: NSMenu) {
+        for item in menu.items {
+            (item.view as? StoryPreviewMenuView)?.openBrowser()
+        }
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        closeInlineBrowsers(in: menu)
+    }
+
+    private func closeInlineBrowsers(in menu: NSMenu) {
+        for item in menu.items {
+            (item.view as? StoryPreviewMenuView)?.closeBrowser()
+            if let submenu = item.submenu {
+                closeInlineBrowsers(in: submenu)
+            }
+        }
+    }
+}
+
 extension StatusMenuController: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         previewWindows.removeAll { $0.controller.window === notification.object as? NSWindow }
@@ -736,10 +759,14 @@ private final class StoryPreviewMenuView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil {
-            cancelMarkReadTask()
+            closeBrowser()
             return
         }
 
+        openBrowser()
+    }
+
+    func openBrowser() {
         scheduleMarkRead()
         guard !didStartLoading else { return }
         didStartLoading = true
@@ -753,6 +780,23 @@ private final class StoryPreviewMenuView: NSView {
         } else {
             webView.loadHTMLString(Self.summaryHTML(for: story), baseURL: nil)
         }
+    }
+
+    func closeBrowser() {
+        cancelMarkReadTask()
+        guard let webView else {
+            didStartLoading = false
+            return
+        }
+
+        webView.setAllMediaPlaybackSuspended(true, completionHandler: nil)
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.uiDelegate = nil
+        webView.removeFromSuperview()
+        self.webView = nil
+        didStartLoading = false
+        needsDisplay = true
     }
 
     private func scheduleMarkRead() {
@@ -801,8 +845,8 @@ enum WebPreviewSession {
 
     static func load(_ request: URLRequest, in webView: WKWebView, feed: Feed?) {
         let cookies = cookiesForPreview(request: request, feed: feed)
-        setCookies(cookies, in: webView.configuration.websiteDataStore.httpCookieStore) {
-            webView.load(request)
+        setCookies(cookies, in: webView.configuration.websiteDataStore.httpCookieStore) { [weak webView] in
+            webView?.load(request)
         }
     }
 
