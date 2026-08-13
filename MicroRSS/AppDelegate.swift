@@ -1,5 +1,28 @@
 import AppKit
 
+enum BuildInfo {
+    static let shortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
+    static let buildVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+
+    static let gitCommit: String? = {
+        guard let url = Bundle.main.url(forResource: "GitCommit", withExtension: "txt"),
+              let contents = try? String(contentsOf: url, encoding: .utf8) else {
+            return nil
+        }
+
+        let commit = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+        return commit.isEmpty ? nil : commit
+    }()
+
+    static var versionDescription: String {
+        var description = "\(shortVersion) (\(buildVersion))"
+        if let gitCommit {
+            description += " · \(gitCommit)"
+        }
+        return description
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let firstLaunchCompletedKey = "MicroRSS.FirstLaunchCompleted"
     private var statusController: StatusMenuController?

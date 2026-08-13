@@ -110,6 +110,7 @@
 				100000000000000000000601 /* Sources */,
 				100000000000000000000301 /* Frameworks */,
 				100000000000000000000602 /* Resources */,
+				100000000000000000000603 /* Embed Git Commit */,
 			);
 			buildRules = (
 			);
@@ -164,6 +165,26 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		100000000000000000000603 /* Embed Git Commit */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/.git",
+			);
+			name = "Embed Git Commit";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/GitCommit.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\ncommit=\"$(git -C \"$SRCROOT\" rev-parse --short=7 HEAD)\"\nprintf '%s\\n' \"$commit\" > \"$SCRIPT_OUTPUT_FILE_0\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		100000000000000000000601 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -214,6 +235,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 2RJGJFQNA5;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MicroRSS/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.news";
@@ -234,6 +256,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 2RJGJFQNA5;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = MicroRSS/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.news";

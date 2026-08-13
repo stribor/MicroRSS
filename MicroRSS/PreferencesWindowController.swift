@@ -396,9 +396,7 @@ final class PreferencesWindowController: NSWindowController {
         let name = NSTextField(labelWithString: "MicroRSS")
         name.font = NSFont.boldSystemFont(ofSize: 24)
 
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
-        let versionLabel = NSTextField(labelWithString: "Version \(version) (\(build))")
+        let versionLabel = NSTextField(labelWithString: "Version \(BuildInfo.versionDescription)")
         versionLabel.textColor = .secondaryLabelColor
 
         let description = NSTextField(labelWithString: "A minimal native macOS RSS reader for the menu bar.")

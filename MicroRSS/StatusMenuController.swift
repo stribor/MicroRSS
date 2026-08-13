@@ -558,7 +558,11 @@ final class StatusMenuController: NSObject {
     }
 
     @objc private func showAbout() {
-        NSApp.orderFrontStandardAboutPanel(nil)
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [:]
+        if let gitCommit = BuildInfo.gitCommit {
+            options[.version] = "\(BuildInfo.buildVersion) · \(gitCommit)"
+        }
+        NSApp.orderFrontStandardAboutPanel(options: options)
         NSApp.activate(ignoringOtherApps: true)
     }
 
