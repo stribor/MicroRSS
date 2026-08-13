@@ -17,6 +17,8 @@ final class StatusMenuController: NSObject {
     private var previewWindows: [PreviewWindowRecord] = []
     private var storeObserverID: UUID?
     private var updatesPaused = false
+    private var activeInlinePreviewMenus: Set<ObjectIdentifier> = []
+    private var menuRebuildPending = false
 
     init(store: FeedStore, service: RSSService) {
         self.store = store
@@ -45,6 +47,12 @@ final class StatusMenuController: NSObject {
     }
 
     private func rebuildMenu() {
+        guard activeInlinePreviewMenus.isEmpty else {
+            menuRebuildPending = true
+            return
+        }
+
+        menuRebuildPending = false
         menu.removeAllItems()
         updateStatusItem()
 
@@ -570,22 +578,35 @@ final class StatusMenuController: NSObject {
 
 extension StatusMenuController: NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
-        for item in menu.items {
-            (item.view as? StoryPreviewMenuView)?.openBrowser()
-        }
+        let previews = menu.items.compactMap { $0.view as? StoryPreviewMenuView }
+        guard !previews.isEmpty else { return }
+
+        activeInlinePreviewMenus.insert(ObjectIdentifier(menu))
+        previews.forEach { $0.openBrowser() }
     }
 
     func menuDidClose(_ menu: NSMenu) {
         closeInlineBrowsers(in: menu)
+        applyPendingMenuRebuildIfPossible()
     }
 
     private func closeInlineBrowsers(in menu: NSMenu) {
+        let previews = menu.items.compactMap { $0.view as? StoryPreviewMenuView }
+        if !previews.isEmpty {
+            activeInlinePreviewMenus.remove(ObjectIdentifier(menu))
+            previews.forEach { $0.closeBrowser() }
+        }
+
         for item in menu.items {
-            (item.view as? StoryPreviewMenuView)?.closeBrowser()
             if let submenu = item.submenu {
                 closeInlineBrowsers(in: submenu)
             }
         }
+    }
+
+    private func applyPendingMenuRebuildIfPossible() {
+        guard menuRebuildPending, activeInlinePreviewMenus.isEmpty else { return }
+        rebuildMenu()
     }
 }
 
