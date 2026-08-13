@@ -5,12 +5,11 @@ import WebKit
 final class PreviewWindowController: NSWindowController {
     private let story: FeedStory
     private let feed: Feed?
-    private let webView: WKWebView
+    private var webView: WKWebView?
 
     init(story: FeedStory, feed: Feed? = nil) {
         self.story = story
         self.feed = feed
-        webView = WKWebView(frame: .zero, configuration: WebPreviewSession.makeConfiguration())
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 860, height: 640),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -27,27 +26,30 @@ final class PreviewWindowController: NSWindowController {
     }
 
     private func configure() {
-        guard let content = window?.contentView else { return }
-        webView.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(webView)
-        NSLayoutConstraint.activate([
-            webView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            webView.topAnchor.constraint(equalTo: content.topAnchor),
-            webView.bottomAnchor.constraint(equalTo: content.bottomAnchor)
-        ])
+        WebPreviewSession.makeWebView(frame: .zero) { [weak self] webView in
+            guard let self, let content = self.window?.contentView else { return }
+            self.webView = webView
+            webView.translatesAutoresizingMaskIntoConstraints = false
+            content.addSubview(webView)
+            NSLayoutConstraint.activate([
+                webView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+                webView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+                webView.topAnchor.constraint(equalTo: content.topAnchor),
+                webView.bottomAnchor.constraint(equalTo: content.bottomAnchor)
+            ])
 
-        if let request = StatusMenuController.storyRequest(for: story, feed: feed) {
-            WebPreviewSession.load(request, in: webView, feed: feed)
-        } else {
-            let html = """
-            <!doctype html>
-            <html>
-            <head><meta charset="utf-8"><style>body{font: -apple-system-body; margin: 32px; max-width: 760px;} h1{font: -apple-system-title1;} </style></head>
-            <body><h1>\(story.title.escapedHTML)</h1><div>\(story.summary)</div></body>
-            </html>
-            """
-            webView.loadHTMLString(html, baseURL: nil)
+            if let request = StatusMenuController.storyRequest(for: self.story, feed: self.feed) {
+                WebPreviewSession.load(request, in: webView, feed: self.feed)
+            } else {
+                let html = """
+                <!doctype html>
+                <html>
+                <head><meta charset="utf-8"><style>body{font: -apple-system-body; margin: 32px; max-width: 760px;} h1{font: -apple-system-title1;} </style></head>
+                <body><h1>\(self.story.title.escapedHTML)</h1><div>\(self.story.summary)</div></body>
+                </html>
+                """
+                WebPreviewSession.loadHTMLString(html, in: webView)
+            }
         }
     }
 }

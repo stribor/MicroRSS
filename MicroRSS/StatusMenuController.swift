@@ -24,6 +24,7 @@ final class StatusMenuController: NSObject {
         self.store = store
         self.service = service
         super.init()
+        configureWebAdBlocker()
         notificationController.articleHandler = { [weak self] article in
             self?.openNotificationArticle(article)
         }
@@ -32,6 +33,7 @@ final class StatusMenuController: NSObject {
         }
         configureStatusItem()
         storeObserverID = store.observe { [weak self] in
+            self?.configureWebAdBlocker()
             self?.rescheduleRefresh()
             self?.rebuildMenu()
         }
@@ -44,6 +46,13 @@ final class StatusMenuController: NSObject {
         menu.delegate = self
         statusItem.menu = menu
         updateStatusItem()
+    }
+
+    private func configureWebAdBlocker() {
+        WebAdBlocker.shared.configure(
+            enabled: store.adBlockingEnabled,
+            listURLString: store.adBlockListURLString
+        )
     }
 
     private func rebuildMenu() {
@@ -739,6 +748,7 @@ private final class StoryPreviewMenuView: NSView {
     private let markReadDelaySeconds: Int
     private let markRead: (FeedStory) -> Void
     private var webView: WKWebView?
+    private var webViewLoadID: UUID?
     private var didStartLoading = false
     private var markReadTask: Task<Void, Never>?
     private var didMarkRead = false
@@ -791,20 +801,30 @@ private final class StoryPreviewMenuView: NSView {
         scheduleMarkRead()
         guard !didStartLoading else { return }
         didStartLoading = true
-        let webView = WKWebView(frame: bounds, configuration: WebPreviewSession.makeConfiguration())
-        webView.autoresizingMask = [.width, .height]
-        addSubview(webView)
-        self.webView = webView
+        let loadID = UUID()
+        webViewLoadID = loadID
+        WebPreviewSession.makeWebView(frame: bounds) { [weak self] webView in
+            guard let self,
+                  self.didStartLoading,
+                  self.webViewLoadID == loadID,
+                  self.window != nil else {
+                return
+            }
+            webView.autoresizingMask = [.width, .height]
+            self.addSubview(webView)
+            self.webView = webView
 
-        if let request = StatusMenuController.storyRequest(for: story, feed: feed) {
-            WebPreviewSession.load(request, in: webView, feed: feed)
-        } else {
-            webView.loadHTMLString(Self.summaryHTML(for: story), baseURL: nil)
+            if let request = StatusMenuController.storyRequest(for: self.story, feed: self.feed) {
+                WebPreviewSession.load(request, in: webView, feed: self.feed)
+            } else {
+                WebPreviewSession.loadHTMLString(Self.summaryHTML(for: self.story), in: webView)
+            }
         }
     }
 
     func closeBrowser() {
         cancelMarkReadTask()
+        webViewLoadID = nil
         guard let webView else {
             didStartLoading = false
             return
@@ -858,7 +878,14 @@ private final class StoryPreviewMenuView: NSView {
 
 @MainActor
 enum WebPreviewSession {
-    static func makeConfiguration() -> WKWebViewConfiguration {
+    static func makeWebView(frame: NSRect, completion: @escaping (WKWebView) -> Void) {
+        let configuration = makeConfiguration()
+        WebAdBlocker.shared.prepare(configuration) {
+            completion(WKWebView(frame: frame, configuration: configuration))
+        }
+    }
+
+    private static func makeConfiguration() -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .default()
         return configuration
@@ -869,6 +896,10 @@ enum WebPreviewSession {
         setCookies(cookies, in: webView.configuration.websiteDataStore.httpCookieStore) { [weak webView] in
             webView?.load(request)
         }
+    }
+
+    static func loadHTMLString(_ html: String, in webView: WKWebView) {
+        webView.loadHTMLString(html, baseURL: nil)
     }
 
     private static func cookiesForPreview(request: URLRequest, feed: Feed?) -> [HTTPCookie] {

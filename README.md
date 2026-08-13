@@ -12,6 +12,7 @@ MicroRSS is a minimal native macOS RSS reader that lives in the menu bar. It is 
 - Feed submenus with unread indicators, feed icons, and current stories.
 - Inline WebKit story previews from the menu.
 - Separate WebKit preview windows for articles.
+- Opt-in WebKit-native ad blocking for previews, with local EasyList conversion and a configurable subscription URL.
 - Open story links in the default browser.
 - Mark stories read or unread per feed or globally.
 - Optional unread counts in the menu bar and feed titles.
@@ -61,6 +62,7 @@ The Settings window includes:
 
 - **Feeds**: manage feed names, URLs, refresh overrides, separators, ordering, and OPML import/export.
 - **General**: configure refresh timing, launch at login, Dock icon visibility, notifications, preview size, story title length, unread counts, menu bar icon behavior, and global menu actions.
+- **Web**: enable preview ad blocking, choose an EasyList-compatible subscription URL, update it manually, and view update status.
 - **About**: app version and short project description.
 
 ## Project Layout
@@ -75,6 +77,8 @@ MicroRSS/
   StatusMenuController.swift        Menu bar UI, refresh scheduling, notifications
   PreferencesWindowController.swift Settings window
   PreviewWindowController.swift     WebKit preview windows
+  WebAdBlocker.swift                Opt-in filter downloads and cached WebKit compilation
+  EasyListConverter.swift           Local EasyList-to-WebKit rule conversion
   FeedIconCache.swift               Feed favicon loading and caching
   Assets.xcassets/                  App and menu bar icons
 ```
@@ -82,3 +86,10 @@ MicroRSS/
 ## Development Notes
 
 MicroRSS intentionally avoids third-party dependencies. Prefer native Apple APIs, explicit code, and small local helpers. Keep changes focused and buildable with the command above.
+
+Ad blocking is disabled by default and MicroRSS does not request a filter list
+until the user enables it. The default subscription URL points directly to
+[EasyList](https://easylist.to/); compatible custom subscription URLs can be
+used instead. Conversion happens locally without third-party runtime
+dependencies. EasyList is attributed to the EasyList authors and is available
+under GPLv3 or CC BY-SA 3.0 (or later).

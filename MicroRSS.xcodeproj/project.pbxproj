@@ -19,6 +19,8 @@
 		100000000000000000000110 /* FeedIconCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000211 /* FeedIconCache.swift */; };
 		100000000000000000000111 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000212 /* Assets.xcassets */; };
 		100000000000000000000112 /* FeedTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000213 /* FeedTransfer.swift */; };
+		100000000000000000000113 /* WebAdBlocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000214 /* WebAdBlocker.swift */; };
+		100000000000000000000114 /* EasyListConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000215 /* EasyListConverter.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +38,8 @@
 		100000000000000000000211 /* FeedIconCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedIconCache.swift; sourceTree = "<group>"; };
 		100000000000000000000212 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		100000000000000000000213 /* FeedTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedTransfer.swift; sourceTree = "<group>"; };
+		100000000000000000000214 /* WebAdBlocker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAdBlocker.swift; sourceTree = "<group>"; };
+		100000000000000000000215 /* EasyListConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyListConverter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,6 +76,8 @@
 				100000000000000000000208 /* PreviewWindowController.swift */,
 				100000000000000000000211 /* FeedIconCache.swift */,
 				100000000000000000000213 /* FeedTransfer.swift */,
+				100000000000000000000214 /* WebAdBlocker.swift */,
+				100000000000000000000215 /* EasyListConverter.swift */,
 				100000000000000000000212 /* Assets.xcassets */,
 				100000000000000000000210 /* Info.plist */,
 			);
@@ -173,6 +179,8 @@
 				100000000000000000000108 /* PreviewWindowController.swift in Sources */,
 				100000000000000000000110 /* FeedIconCache.swift in Sources */,
 				100000000000000000000112 /* FeedTransfer.swift in Sources */,
+				100000000000000000000113 /* WebAdBlocker.swift in Sources */,
+				100000000000000000000114 /* EasyListConverter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

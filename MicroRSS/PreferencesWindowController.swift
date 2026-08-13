@@ -7,12 +7,14 @@ final class PreferencesWindowController: NSWindowController {
     private enum TabID {
         static let feeds = "feeds"
         static let general = "general"
+        static let web = "web"
         static let about = "about"
     }
 
     private enum ToolbarID {
         static let feeds = NSToolbarItem.Identifier("feeds")
         static let general = NSToolbarItem.Identifier("general")
+        static let web = NSToolbarItem.Identifier("web")
         static let about = NSToolbarItem.Identifier("about")
     }
 
@@ -29,6 +31,11 @@ final class PreferencesWindowController: NSWindowController {
     private let previewMenuWidthField = NSTextField()
     private let previewMenuHeightField = NSTextField()
     private let storyMenuTitleLengthField = NSTextField()
+    private let adBlockingButton = NSButton(checkboxWithTitle: "Block ads in web previews", target: nil, action: nil)
+    private let adBlockListURLField = NSTextField()
+    private let adBlockStatusLabel = NSTextField(wrappingLabelWithString: "")
+    private let adBlockUpdateButton = NSButton(title: "Update Now", target: nil, action: nil)
+    private let adBlockDefaultURLButton = NSButton(title: "Use Default", target: nil, action: nil)
     private let launchAtLoginButton = NSButton(checkboxWithTitle: "Start at login", target: nil, action: nil)
     private let hideDockIconButton = NSButton(checkboxWithTitle: "Hide Dock Icon", target: nil, action: nil)
     private let notificationsButton = NSButton(checkboxWithTitle: "Show notifications for new articles", target: nil, action: nil)
@@ -43,6 +50,7 @@ final class PreferencesWindowController: NSWindowController {
     private let feedCountLabel = NSTextField(labelWithString: "")
     private var selectedItemIDs: [UUID] = []
     private var storeObserverID: UUID?
+    private var adBlockerObserverID: UUID?
 
     init(store: FeedStore) {
         self.store = store
@@ -60,15 +68,21 @@ final class PreferencesWindowController: NSWindowController {
         configureToolbar()
         buildUI()
         configureGeneralActions()
+        configureAdBlockingActions()
         reloadGeneralSettings()
+        reloadAdBlockingSettings()
         reloadSelection()
         iconCache.didUpdate = { [weak self] in
             self?.tableView.reloadData()
         }
         storeObserverID = store.observe { [weak self] in
             self?.reloadGeneralSettings()
+            self?.reloadAdBlockingSettings()
             self?.tableView.reloadData()
             self?.reloadSelection()
+        }
+        adBlockerObserverID = WebAdBlocker.shared.observe { [weak self] state in
+            self?.updateAdBlockStatus(state)
         }
     }
 
@@ -77,9 +91,15 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     deinit {
-        if let storeObserverID {
-            MainActor.assumeIsolated {
-                store.removeObserver(id: storeObserverID)
+        let storedStoreObserverID = storeObserverID
+        let storedAdBlockerObserverID = adBlockerObserverID
+        let observedStore = store
+        MainActor.assumeIsolated {
+            if let storedStoreObserverID {
+                observedStore.removeObserver(id: storedStoreObserverID)
+            }
+            if let storedAdBlockerObserverID {
+                WebAdBlocker.shared.removeObserver(id: storedAdBlockerObserverID)
             }
         }
     }
@@ -128,6 +148,7 @@ final class PreferencesWindowController: NSWindowController {
 
         tabView.addTabViewItem(tabItem(identifier: TabID.feeds, label: "Feeds", view: buildFeedsPane()))
         tabView.addTabViewItem(tabItem(identifier: TabID.general, label: "General", view: buildGeneralPane()))
+        tabView.addTabViewItem(tabItem(identifier: TabID.web, label: "Web", view: buildWebPane()))
         tabView.addTabViewItem(tabItem(identifier: TabID.about, label: "About", view: buildAboutPane()))
         tabView.selectTabViewItem(withIdentifier: TabID.feeds)
     }
@@ -231,6 +252,66 @@ final class PreferencesWindowController: NSWindowController {
         return container
     }
 
+    private func buildWebPane() -> NSView {
+        let container = NSView()
+        let root = NSStackView()
+        root.orientation = .vertical
+        root.alignment = .leading
+        root.spacing = 16
+        root.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(root)
+
+        let title = sectionTitle("Web Preview Content Blocking")
+        let description = NSTextField(wrappingLabelWithString: "When enabled, MicroRSS downloads this EasyList-compatible subscription, converts supported rules locally, and applies them to menu previews and preview windows. No filter-list request is made while disabled.")
+        description.textColor = .secondaryLabelColor
+        description.maximumNumberOfLines = 0
+
+        adBlockListURLField.placeholderString = WebAdBlocker.defaultListURLString
+        configureSingleLineField(adBlockListURLField)
+
+        let urlControls = NSStackView(views: [adBlockListURLField, adBlockDefaultURLButton])
+        urlControls.orientation = .horizontal
+        urlControls.alignment = .centerY
+        urlControls.spacing = 8
+
+        let form = NSGridView()
+        form.rowSpacing = 12
+        form.columnSpacing = 12
+        form.addRow(with: [label("EasyList-compatible URL"), urlControls])
+        form.column(at: 0).xPlacement = .trailing
+        form.column(at: 1).xPlacement = .leading
+        form.row(at: 0).yPlacement = .center
+
+        adBlockStatusLabel.textColor = .secondaryLabelColor
+        adBlockStatusLabel.maximumNumberOfLines = 0
+
+        let attribution = NSTextField(wrappingLabelWithString: "The default URL is the official EasyList subscription. EasyList is attributed to the EasyList authors and is available under GPLv3 or CC BY-SA 3.0 and later versions.")
+        attribution.textColor = .tertiaryLabelColor
+        attribution.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        attribution.maximumNumberOfLines = 0
+
+        root.addArrangedSubview(title)
+        root.addArrangedSubview(description)
+        root.addArrangedSubview(adBlockingButton)
+        root.addArrangedSubview(form)
+        root.addArrangedSubview(adBlockUpdateButton)
+        root.addArrangedSubview(adBlockStatusLabel)
+        root.addArrangedSubview(attribution)
+
+        NSLayoutConstraint.activate([
+            root.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 28),
+            root.topAnchor.constraint(equalTo: container.topAnchor, constant: 28),
+            root.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -28),
+            root.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -28),
+            description.widthAnchor.constraint(lessThanOrEqualToConstant: 720),
+            adBlockListURLField.widthAnchor.constraint(greaterThanOrEqualToConstant: 480),
+            adBlockStatusLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 720),
+            attribution.widthAnchor.constraint(lessThanOrEqualToConstant: 720)
+        ])
+
+        return container
+    }
+
     private func configureGeneralActions() {
         globalRefreshField.target = self
         globalRefreshField.action = #selector(applyGeneralSettingsFromControl)
@@ -264,6 +345,18 @@ final class PreferencesWindowController: NSWindowController {
             button.target = self
             button.action = #selector(applyGeneralSettingsFromControl)
         }
+    }
+
+    private func configureAdBlockingActions() {
+        adBlockingButton.target = self
+        adBlockingButton.action = #selector(applyAdBlockingSettings)
+        adBlockListURLField.target = self
+        adBlockListURLField.action = #selector(applyAdBlockingSettings)
+        adBlockListURLField.delegate = self
+        adBlockUpdateButton.target = self
+        adBlockUpdateButton.action = #selector(updateAdBlockListNow)
+        adBlockDefaultURLButton.target = self
+        adBlockDefaultURLButton.action = #selector(useDefaultAdBlockListURL)
     }
 
     private func buildFeedsPane() -> NSView {
@@ -465,6 +558,61 @@ final class PreferencesWindowController: NSWindowController {
         globalShowAllUnreadButton.state = store.showGlobalShowAllUnread ? .on : .off
     }
 
+    private func reloadAdBlockingSettings() {
+        adBlockingButton.state = store.adBlockingEnabled ? .on : .off
+        if adBlockListURLField.currentEditor() == nil {
+            adBlockListURLField.stringValue = store.adBlockListURLString
+        }
+        adBlockUpdateButton.isEnabled = store.adBlockingEnabled && !isAdBlockerUpdating
+    }
+
+    private var isAdBlockerUpdating: Bool {
+        if case .updating = WebAdBlocker.shared.state {
+            return true
+        }
+        return false
+    }
+
+    private func updateAdBlockStatus(_ state: WebAdBlocker.State) {
+        let text: String
+        switch state {
+        case .disabled:
+            text = "Content blocking is disabled. The cached list is retained."
+        case .preparing:
+            text = "Loading the last locally compiled filter list…"
+        case .updating(let lastSuccessfulUpdate):
+            if let lastSuccessfulUpdate {
+                text = "Downloading, converting, and compiling the filter list… Last successful update: \(Self.adBlockDateFormatter.string(from: lastSuccessfulUpdate))."
+            } else {
+                text = "Downloading, converting, and compiling the filter list…"
+            }
+        case .ready(let lastSuccessfulUpdate):
+            let ruleCount = WebAdBlocker.shared.activeRuleCount.map { " (\($0.formatted()) WebKit rules)" } ?? ""
+            if let lastSuccessfulUpdate {
+                text = "Filter list ready\(ruleCount). Last checked: \(Self.adBlockDateFormatter.string(from: lastSuccessfulUpdate))."
+            } else {
+                text = "The last locally compiled filter list is ready\(ruleCount)."
+            }
+        case .failed(let message, let lastSuccessfulUpdate):
+            if let lastSuccessfulUpdate {
+                text = "Update failed: \(message) The list last checked \(Self.adBlockDateFormatter.string(from: lastSuccessfulUpdate)) remains active."
+            } else if WebAdBlocker.shared.activeRuleCount != nil {
+                text = "Update failed: \(message) The last locally compiled list remains active."
+            } else {
+                text = "Update failed: \(message) No filter list is active yet."
+            }
+        }
+        adBlockStatusLabel.stringValue = text
+        adBlockUpdateButton.isEnabled = store.adBlockingEnabled && !isAdBlockerUpdating
+    }
+
+    private static let adBlockDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
     private func reloadSelection() {
         let separatorCount = store.items.filter {
             if case .separator = $0 { return true }
@@ -630,6 +778,34 @@ final class PreferencesWindowController: NSWindowController {
             showGlobalMarkAllUnread: globalMarkAllUnreadButton.state == .on,
             showGlobalShowAllUnread: globalShowAllUnreadButton.state == .on
         )
+    }
+
+    @objc private func applyAdBlockingSettings() {
+        let listURLString = adBlockListURLField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard WebAdBlocker.validListURL(from: listURLString) != nil else {
+            NSSound.beep()
+            adBlockStatusLabel.stringValue = "Enter a valid HTTPS URL for an EasyList-compatible subscription."
+            adBlockListURLField.stringValue = store.adBlockListURLString
+            return
+        }
+        store.updateAdBlocking(
+            enabled: adBlockingButton.state == .on,
+            listURLString: listURLString
+        )
+    }
+
+    @objc private func updateAdBlockListNow() {
+        applyAdBlockingSettings()
+        guard store.adBlockingEnabled,
+              adBlockListURLField.stringValue == store.adBlockListURLString else {
+            return
+        }
+        WebAdBlocker.shared.updateNow()
+    }
+
+    @objc private func useDefaultAdBlockListURL() {
+        adBlockListURLField.stringValue = WebAdBlocker.defaultListURLString
+        applyAdBlockingSettings()
     }
 
     @objc private func resetIconCache() {
@@ -936,15 +1112,15 @@ extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegat
 
 extension PreferencesWindowController: NSToolbarDelegate {
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.feeds, ToolbarID.general, .flexibleSpace, ToolbarID.about]
+        [ToolbarID.feeds, ToolbarID.general, ToolbarID.web, .flexibleSpace, ToolbarID.about]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.feeds, ToolbarID.general, .flexibleSpace, ToolbarID.about]
+        [ToolbarID.feeds, ToolbarID.general, ToolbarID.web, .flexibleSpace, ToolbarID.about]
     }
 
     func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ToolbarID.feeds, ToolbarID.general, ToolbarID.about]
+        [ToolbarID.feeds, ToolbarID.general, ToolbarID.web, ToolbarID.about]
     }
 
     func toolbar(
@@ -966,6 +1142,10 @@ extension PreferencesWindowController: NSToolbarDelegate {
             item.label = "General"
             item.paletteLabel = "General"
             item.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "General")
+        case ToolbarID.web:
+            item.label = "Web"
+            item.paletteLabel = "Web"
+            item.image = NSImage(systemSymbolName: "safari", accessibilityDescription: "Web")
         case ToolbarID.about:
             item.label = "About"
             item.paletteLabel = "About"
@@ -984,6 +1164,11 @@ extension PreferencesWindowController: NSTextFieldDelegate {
 
         if field === globalRefreshField || field === previewMarkReadDelayField || field === storyMenuTitleLengthField {
             applyGeneralSettingsFromControl()
+            return
+        }
+
+        if field === adBlockListURLField {
+            applyAdBlockingSettings()
             return
         }
 

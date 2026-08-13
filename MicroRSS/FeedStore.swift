@@ -13,6 +13,8 @@ final class FeedStore {
         var previewMarkReadDelaySeconds: Int?
         var previewMenuWidth: Int?
         var previewMenuHeight: Int?
+        var adBlockingEnabled: Bool?
+        var adBlockListURLString: String?
         var storyMenuTitleLength: Int?
         var readStoryIDs: Set<String>?
         var showMenuBarIcon: Bool?
@@ -26,6 +28,7 @@ final class FeedStore {
 
     private let defaults: UserDefaults
     private let key = "MicroRSS.FeedStore.v1"
+    private static let retiredHostedAdBlockListURL = "https://raw.githubusercontent.com/stribor/MicroRSS/master/Filters/easylist.json"
 
     let isFreshInstall: Bool
     private(set) var globalRefreshMinutes: Int
@@ -36,6 +39,8 @@ final class FeedStore {
     private(set) var previewMarkReadDelaySeconds: Int
     private(set) var previewMenuWidth: Int
     private(set) var previewMenuHeight: Int
+    private(set) var adBlockingEnabled: Bool
+    private(set) var adBlockListURLString: String
     private(set) var storyMenuTitleLength: Int
     private(set) var showMenuBarIcon: Bool
     private(set) var showUnreadCountInMenuBar: Bool
@@ -65,6 +70,13 @@ final class FeedStore {
             previewMarkReadDelaySeconds = decoded.previewMarkReadDelaySeconds ?? 3
             previewMenuWidth = Self.validPreviewMenuDimension(decoded.previewMenuWidth, defaultValue: 800)
             previewMenuHeight = Self.validPreviewMenuDimension(decoded.previewMenuHeight, defaultValue: 600)
+            if decoded.adBlockListURLString == Self.retiredHostedAdBlockListURL {
+                adBlockingEnabled = false
+                adBlockListURLString = WebAdBlocker.defaultListURLString
+            } else {
+                adBlockingEnabled = decoded.adBlockingEnabled ?? false
+                adBlockListURLString = decoded.adBlockListURLString ?? WebAdBlocker.defaultListURLString
+            }
             storyMenuTitleLength = max(0, decoded.storyMenuTitleLength ?? 0)
             items = decoded.items ?? (decoded.feeds ?? []).map(FeedListItem.init(feed:))
             readStoryIDs = decoded.readStoryIDs ?? []
@@ -84,6 +96,8 @@ final class FeedStore {
             previewMarkReadDelaySeconds = 3
             previewMenuWidth = 800
             previewMenuHeight = 600
+            adBlockingEnabled = false
+            adBlockListURLString = WebAdBlocker.defaultListURLString
             storyMenuTitleLength = 0
             items = []
             readStoryIDs = []
@@ -136,6 +150,12 @@ final class FeedStore {
 
     func updateGlobalRefresh(minutes: Int) {
         globalRefreshMinutes = max(0, minutes)
+        save()
+    }
+
+    func updateAdBlocking(enabled: Bool, listURLString: String) {
+        adBlockingEnabled = enabled
+        adBlockListURLString = listURLString
         save()
     }
 
@@ -310,6 +330,8 @@ final class FeedStore {
             previewMarkReadDelaySeconds: previewMarkReadDelaySeconds,
             previewMenuWidth: previewMenuWidth,
             previewMenuHeight: previewMenuHeight,
+            adBlockingEnabled: adBlockingEnabled,
+            adBlockListURLString: adBlockListURLString,
             storyMenuTitleLength: storyMenuTitleLength,
             readStoryIDs: readStoryIDs,
             showMenuBarIcon: showMenuBarIcon,
