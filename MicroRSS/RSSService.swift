@@ -34,7 +34,7 @@ struct FeedMetadata {
     var iconURL: URL?
 }
 
-private final class FeedXMLParser: NSObject, XMLParserDelegate {
+final class FeedXMLParser: NSObject, XMLParserDelegate {
     private let feedID: UUID
     private let feedURL: URL
     private let parser: XMLParser
@@ -86,7 +86,7 @@ private final class FeedXMLParser: NSObject, XMLParserDelegate {
         if !inItem, element == "link", let href = attributeDict["href"] {
             if attributeDict["rel"]?.lowercased().contains("icon") == true {
                 metadata.iconURL = URL(string: href, relativeTo: feedURL)?.absoluteURL
-            } else if metadata.siteURL == nil {
+            } else if attributeDict["rel"]?.lowercased() != "self", metadata.siteURL == nil {
                 metadata.siteURL = URL(string: href, relativeTo: feedURL)?.absoluteURL
             }
         }
@@ -167,7 +167,7 @@ private final class FeedXMLParser: NSObject, XMLParserDelegate {
     }
 }
 
-private enum DateParser {
+enum DateParser {
     private static let rfc822: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

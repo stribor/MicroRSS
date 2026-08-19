@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var shouldInitialize = true
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return }
         let currentProcessIdentifier = ProcessInfo.processInfo.processIdentifier
         guard let existingApplication = NSRunningApplication
@@ -44,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
         guard shouldInitialize else { return }
         NSApp.mainMenu = ApplicationMenu.make()
         let store = FeedStore()

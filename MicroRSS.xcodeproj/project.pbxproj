@@ -22,6 +22,10 @@
 		100000000000000000000113 /* WebAdBlocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000214 /* WebAdBlocker.swift */; };
 		100000000000000000000114 /* EasyListConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000215 /* EasyListConverter.swift */; };
 		100000000000000000000115 /* FeedIconDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000216 /* FeedIconDiscoveryTests.swift */; };
+		100000000000000000000116 /* ModelsAndTransferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000217 /* ModelsAndTransferTests.swift */; };
+		100000000000000000000117 /* FeedStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000218 /* FeedStoreTests.swift */; };
+		100000000000000000000118 /* RSSServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000219 /* RSSServiceTests.swift */; };
+		100000000000000000000119 /* EasyListConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000220 /* EasyListConverterTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -53,6 +57,10 @@
 		100000000000000000000214 /* WebAdBlocker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAdBlocker.swift; sourceTree = "<group>"; };
 		100000000000000000000215 /* EasyListConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyListConverter.swift; sourceTree = "<group>"; };
 		100000000000000000000216 /* FeedIconDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedIconDiscoveryTests.swift; sourceTree = "<group>"; };
+		100000000000000000000217 /* ModelsAndTransferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelsAndTransferTests.swift; sourceTree = "<group>"; };
+		100000000000000000000218 /* FeedStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedStoreTests.swift; sourceTree = "<group>"; };
+		100000000000000000000219 /* RSSServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RSSServiceTests.swift; sourceTree = "<group>"; };
+		100000000000000000000220 /* EasyListConverterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyListConverterTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -126,6 +134,10 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000216 /* FeedIconDiscoveryTests.swift */,
+				100000000000000000000217 /* ModelsAndTransferTests.swift */,
+				100000000000000000000218 /* FeedStoreTests.swift */,
+				100000000000000000000219 /* RSSServiceTests.swift */,
+				100000000000000000000220 /* EasyListConverterTests.swift */,
 			);
 			path = MicroRSSTests;
 			sourceTree = "<group>";
@@ -270,6 +282,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000115 /* FeedIconDiscoveryTests.swift in Sources */,
+				100000000000000000000116 /* ModelsAndTransferTests.swift in Sources */,
+				100000000000000000000117 /* FeedStoreTests.swift in Sources */,
+				100000000000000000000118 /* RSSServiceTests.swift in Sources */,
+				100000000000000000000119 /* EasyListConverterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
