@@ -34,6 +34,12 @@ final class StatusMenuController: NSObject {
         iconCache.didResolveIconURL = { [weak self] feedID, iconURL in
             self?.saveResolvedIconURL(iconURL, for: feedID)
         }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationDidResignActive),
+            name: NSApplication.didResignActiveNotification,
+            object: NSApp
+        )
         configureStatusItem()
         storeObserverID = store.observe { [weak self] in
             self?.configureWebAdBlocker()
@@ -42,6 +48,10 @@ final class StatusMenuController: NSObject {
         }
         rescheduleRefresh()
         rebuildMenu()
+    }
+
+    @objc private func applicationDidResignActive() {
+        dismissInlinePreviewMenus()
     }
 
     private func configureStatusItem() {
@@ -611,6 +621,57 @@ extension StatusMenuController: NSMenuDelegate {
     func menuDidClose(_ menu: NSMenu) {
         closeInlineBrowsers(in: menu)
         applyPendingMenuRebuildIfPossible()
+    }
+
+    private func dismissInlinePreviewMenus() {
+        let previewWindows = inlinePreviewWindows(in: menu)
+        cancelTracking(in: menu)
+        closeInlineBrowsers(in: menu)
+        activeInlinePreviewMenus.removeAll()
+        applyPendingMenuRebuildIfPossible()
+
+        // AppKit normally orders submenu panels out when tracking ends. If the app
+        // deactivates during nested custom-view tracking, that cleanup can rarely
+        // be missed, leaving a high-level NSPopupMenuWindow above other apps.
+        // Check on the next run-loop turn, after AppKit has finished cancellation,
+        // and hide only panels that hosted one of our inline preview views.
+        DispatchQueue.main.async {
+            previewWindows.forEach { window in
+                if window.isVisible {
+                    window.orderOut(nil)
+                }
+            }
+        }
+    }
+
+    private func cancelTracking(in menu: NSMenu) {
+        for item in menu.items {
+            if let submenu = item.submenu {
+                cancelTracking(in: submenu)
+            }
+        }
+        menu.cancelTrackingWithoutAnimation()
+    }
+
+    private func inlinePreviewWindows(in menu: NSMenu) -> [NSWindow] {
+        var windows: [NSWindow] = []
+        var identifiers: Set<ObjectIdentifier> = []
+
+        func collect(from menu: NSMenu) {
+            for item in menu.items {
+                if let preview = item.view as? StoryPreviewMenuView,
+                   let window = preview.window,
+                   identifiers.insert(ObjectIdentifier(window)).inserted {
+                    windows.append(window)
+                }
+                if let submenu = item.submenu {
+                    collect(from: submenu)
+                }
+            }
+        }
+
+        collect(from: menu)
+        return windows
     }
 
     private func closeInlineBrowsers(in menu: NSMenu) {
