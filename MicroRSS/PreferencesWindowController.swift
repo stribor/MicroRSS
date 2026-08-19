@@ -75,6 +75,12 @@ final class PreferencesWindowController: NSWindowController {
         iconCache.didUpdate = { [weak self] in
             self?.tableView.reloadData()
         }
+        iconCache.didResolveIconURL = { [weak self] feedID, iconURL in
+            guard var feed = self?.store.feeds.first(where: { $0.id == feedID }),
+                  feed.iconURL != iconURL else { return }
+            feed.iconURL = iconURL
+            self?.store.updateFeed(feed)
+        }
         storeObserverID = store.observe { [weak self] in
             self?.reloadGeneralSettings()
             self?.reloadAdBlockingSettings()

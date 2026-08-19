@@ -21,10 +21,22 @@
 		100000000000000000000112 /* FeedTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000213 /* FeedTransfer.swift */; };
 		100000000000000000000113 /* WebAdBlocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000214 /* WebAdBlocker.swift */; };
 		100000000000000000000114 /* EasyListConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000215 /* EasyListConverter.swift */; };
+		100000000000000000000115 /* FeedIconDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000216 /* FeedIconDiscoveryTests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		100000000000000000000505 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 100000000000000000000701 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 100000000000000000000501;
+			remoteInfo = MicroRSS;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		100000000000000000000001 /* MicroRSS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MicroRSS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000002 /* MicroRSSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MicroRSSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000201 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		100000000000000000000202 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		100000000000000000000203 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -40,6 +52,7 @@
 		100000000000000000000213 /* FeedTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedTransfer.swift; sourceTree = "<group>"; };
 		100000000000000000000214 /* WebAdBlocker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAdBlocker.swift; sourceTree = "<group>"; };
 		100000000000000000000215 /* EasyListConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyListConverter.swift; sourceTree = "<group>"; };
+		100000000000000000000216 /* FeedIconDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedIconDiscoveryTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -51,6 +64,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		100000000000000000000302 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -58,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000402 /* MicroRSS */,
+				100000000000000000000405 /* MicroRSSTests */,
 				100000000000000000000403 /* Frameworks */,
 				100000000000000000000404 /* Products */,
 			);
@@ -96,8 +117,17 @@
 			isa = PBXGroup;
 			children = (
 				100000000000000000000001 /* MicroRSS.app */,
+				100000000000000000000002 /* MicroRSSTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		100000000000000000000405 /* MicroRSSTests */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000216 /* FeedIconDiscoveryTests.swift */,
+			);
+			path = MicroRSSTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -121,6 +151,24 @@
 			productReference = 100000000000000000000001 /* MicroRSS.app */;
 			productType = "com.apple.product-type.application";
 		};
+		100000000000000000000502 /* MicroRSSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 100000000000000000000903 /* Build configuration list for PBXNativeTarget "MicroRSSTests" */;
+			buildPhases = (
+				100000000000000000000604 /* Sources */,
+				100000000000000000000302 /* Frameworks */,
+				100000000000000000000605 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				100000000000000000000504 /* PBXTargetDependency */,
+			);
+			name = MicroRSSTests;
+			productName = MicroRSSTests;
+			productReference = 100000000000000000000002 /* MicroRSSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -133,6 +181,10 @@
 				TargetAttributes = {
 					100000000000000000000501 = {
 						CreatedOnToolsVersion = 26.5;
+					};
+					100000000000000000000502 = {
+						CreatedOnToolsVersion = 26.5;
+						TestTargetID = 100000000000000000000501;
 					};
 				};
 			};
@@ -150,6 +202,7 @@
 			projectRoot = "";
 			targets = (
 				100000000000000000000501 /* MicroRSS */,
+				100000000000000000000502 /* MicroRSSTests */,
 			);
 		};
 /* End PBXProject section */
@@ -160,6 +213,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000111 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		100000000000000000000605 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -205,7 +265,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		100000000000000000000604 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000115 /* FeedIconDiscoveryTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		100000000000000000000504 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 100000000000000000000501 /* MicroRSS */;
+			targetProxy = 100000000000000000000505 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		100000000000000000000801 /* Debug */ = {
@@ -270,6 +346,36 @@
 			};
 			name = Release;
 		};
+		100000000000000000000805 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 2RJGJFQNA5;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.stribor.microrss.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MicroRSS.app/Contents/MacOS/MicroRSS";
+			};
+			name = Debug;
+		};
+		100000000000000000000806 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 2RJGJFQNA5;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = org.stribor.microrss.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MicroRSS.app/Contents/MacOS/MicroRSS";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -287,6 +393,15 @@
 			buildConfigurations = (
 				100000000000000000000801 /* Debug */,
 				100000000000000000000802 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		100000000000000000000903 /* Build configuration list for PBXNativeTarget "MicroRSSTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				100000000000000000000805 /* Debug */,
+				100000000000000000000806 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

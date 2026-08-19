@@ -31,6 +31,9 @@ final class StatusMenuController: NSObject {
         iconCache.didUpdate = { [weak self] in
             self?.rebuildMenu()
         }
+        iconCache.didResolveIconURL = { [weak self] feedID, iconURL in
+            self?.saveResolvedIconURL(iconURL, for: feedID)
+        }
         configureStatusItem()
         storeObserverID = store.observe { [weak self] in
             self?.configureWebAdBlocker()
@@ -388,6 +391,13 @@ final class StatusMenuController: NSObject {
     private func faviconURL(for siteURL: URL) -> URL? {
         guard let scheme = siteURL.scheme, let host = siteURL.host(percentEncoded: false) else { return nil }
         return URL(string: "\(scheme)://\(host)/favicon.ico")
+    }
+
+    private func saveResolvedIconURL(_ iconURL: URL, for feedID: UUID) {
+        guard var feed = store.feeds.first(where: { $0.id == feedID }),
+              feed.iconURL != iconURL else { return }
+        feed.iconURL = iconURL
+        store.updateFeed(feed)
     }
 
     @objc private func refreshAllFromMenu() {
