@@ -975,8 +975,12 @@ enum WebPreviewSession {
 
     static func load(_ request: URLRequest, in webView: WKWebView, feed: Feed?) {
         let cookies = cookiesForPreview(request: request, feed: feed)
-        setCookies(cookies, in: webView.configuration.websiteDataStore.httpCookieStore) { [weak webView] in
-            webView?.load(request)
+        let cookieStore = webView.configuration.websiteDataStore.httpCookieStore
+        cookieStore.getAllCookies { existingCookies in
+            let cookiesToSeed = cookiesToSeed(cookies, existing: existingCookies)
+            setCookies(cookiesToSeed, in: cookieStore) { [weak webView] in
+                webView?.load(request)
+            }
         }
     }
 
@@ -999,6 +1003,27 @@ enum WebPreviewSession {
         }
 
         return cookies
+    }
+
+    static func cookiesToSeed(_ cookies: [HTTPCookie], existing: [HTTPCookie]) -> [HTTPCookie] {
+        cookies.filter { cookie in
+            !existing.contains { existingCookie in
+                cookiesConflict(cookie, existingCookie)
+            }
+        }
+    }
+
+    private static func cookiesConflict(_ lhs: HTTPCookie, _ rhs: HTTPCookie) -> Bool {
+        guard lhs.name == rhs.name, lhs.path == rhs.path else { return false }
+        let lhsDomain = normalizedCookieDomain(lhs.domain)
+        let rhsDomain = normalizedCookieDomain(rhs.domain)
+        return lhsDomain == rhsDomain
+            || lhsDomain.hasSuffix(".\(rhsDomain)")
+            || rhsDomain.hasSuffix(".\(lhsDomain)")
+    }
+
+    private static func normalizedCookieDomain(_ domain: String) -> String {
+        domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
     }
 
     private static func setCookies(_ cookies: [HTTPCookie], in store: WKHTTPCookieStore, completion: @escaping () -> Void) {

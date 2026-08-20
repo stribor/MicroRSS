@@ -150,4 +150,32 @@ final class FeedStoreTests: XCTestCase {
         XCTAssertEqual(store.previewMenuWidth, 240)
         XCTAssertEqual(store.previewMenuHeight, 240)
     }
+
+    func testPreviewCookieMergeKeepsExistingWebKitLoginCookie() throws {
+        let anonymousCookie = try makeCookie(name: "user", value: "nobody", domain: "soylentnews.org")
+        let loginCookie = try makeCookie(name: "user", value: "authenticated", domain: ".soylentnews.org")
+
+        let cookies = WebPreviewSession.cookiesToSeed([anonymousCookie], existing: [loginCookie])
+
+        XCTAssertTrue(cookies.isEmpty)
+    }
+
+    func testPreviewCookieMergeSeedsCookiesMissingFromWebKit() throws {
+        let preferenceCookie = try makeCookie(name: "theme", value: "dark", domain: "example.com")
+        let unrelatedCookie = try makeCookie(name: "session", value: "active", domain: "example.com")
+
+        let cookies = WebPreviewSession.cookiesToSeed([preferenceCookie], existing: [unrelatedCookie])
+
+        XCTAssertEqual(cookies.map(\.name), ["theme"])
+    }
+
+    private func makeCookie(name: String, value: String, domain: String) throws -> HTTPCookie {
+        try XCTUnwrap(HTTPCookie(properties: [
+            .name: name,
+            .value: value,
+            .domain: domain,
+            .path: "/",
+            .secure: "TRUE"
+        ]))
+    }
 }
