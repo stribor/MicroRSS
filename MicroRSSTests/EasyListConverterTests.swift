@@ -13,7 +13,7 @@ final class EasyListConverterTests: XCTestCase {
         let rules = try decodedRules(result.json)
 
         XCTAssertEqual(result.sourceRuleCount, 2)
-        XCTAssertEqual(result.convertedRuleCount, 4)
+        XCTAssertEqual(result.convertedRuleCount, 5)
         XCTAssertEqual(result.skippedRuleCount, 0)
         let block = try XCTUnwrap(rules.first { ($0["action"] as? [String: Any])?["type"] as? String == "block" && (($0["trigger"] as? [String: Any])?["url-filter"] as? String)?.contains("ads\\.example\\.com") == true })
         let trigger = try XCTUnwrap(block["trigger"] as? [String: Any])
@@ -63,8 +63,22 @@ final class EasyListConverterTests: XCTestCase {
         let result = try EasyListConverter.convert(Data(source.utf8))
 
         XCTAssertEqual(result.sourceRuleCount, 4)
-        XCTAssertEqual(result.convertedRuleCount, 3)
+        XCTAssertEqual(result.convertedRuleCount, 4)
         XCTAssertEqual(result.skippedRuleCount, 2)
+    }
+
+    func testIncludesSlashdotNativeAdFallbackBlock() throws {
+        let result = try EasyListConverter.convert(Data("! no subscription rules".utf8))
+        let rules = try decodedRules(result.json)
+
+        let slashdotBlock = rules.first { rule in
+            let action = rule["action"] as? [String: Any]
+            let trigger = rule["trigger"] as? [String: Any]
+            return action?["type"] as? String == "block"
+                && (trigger?["url-filter"] as? String)?.contains("slashdot\\.org/ajax\\.pl\\?op=nel") == true
+        }
+
+        XCTAssertNotNil(slashdotBlock)
     }
 
     func testRejectsNonUTF8Input() {

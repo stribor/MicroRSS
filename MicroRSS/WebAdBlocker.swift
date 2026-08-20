@@ -27,8 +27,8 @@ final class WebAdBlocker {
     }
 
     private enum RuleIdentifier {
-        static let remoteA = "MicroRSS.AdBlocker.EasyList.A.v3"
-        static let remoteB = "MicroRSS.AdBlocker.EasyList.B.v3"
+        static let remoteA = "MicroRSS.AdBlocker.EasyList.A.v4"
+        static let remoteB = "MicroRSS.AdBlocker.EasyList.B.v4"
 
         static func isCurrent(_ identifier: String) -> Bool {
             identifier == remoteA || identifier == remoteB
