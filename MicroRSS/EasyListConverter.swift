@@ -89,7 +89,13 @@ enum EasyListConverter {
     private static let builtInRules = [
         ContentRule(
             trigger: Trigger(
-                urlFilter: "^[^:]+://+([^:/]+\\.)?slashdot\\.org/ajax\\.pl\\?op=nel([&#]|$)"
+                urlFilter: "^[^:]+://+([^:/]+\\.)?slashdot\\.org/ajax\\.pl\\?op=nel$"
+            ),
+            action: Action(type: "block", selector: nil)
+        ),
+        ContentRule(
+            trigger: Trigger(
+                urlFilter: "^[^:]+://+([^:/]+\\.)?slashdot\\.org/ajax\\.pl\\?op=nel&"
             ),
             action: Action(type: "block", selector: nil)
         ),
