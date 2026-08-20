@@ -33,6 +33,8 @@ final class PreferencesWindowController: NSWindowController {
     private let storyMenuTitleLengthField = NSTextField()
     private let adBlockingButton = NSButton(checkboxWithTitle: "Block ads in web previews", target: nil, action: nil)
     private let adBlockListURLField = NSTextField()
+    private let supplementaryRulesTextView = NSTextView()
+    private let supplementaryRulesApplyButton = NSButton(title: "Apply Rules", target: nil, action: nil)
     private let adBlockStatusLabel = NSTextField(wrappingLabelWithString: "")
     private let adBlockUpdateButton = NSButton(title: "Update Now", target: nil, action: nil)
     private let adBlockDefaultURLButton = NSButton(title: "Use Default", target: nil, action: nil)
@@ -284,9 +286,11 @@ final class PreferencesWindowController: NSWindowController {
         form.rowSpacing = 12
         form.columnSpacing = 12
         form.addRow(with: [label("EasyList-compatible URL"), urlControls])
+        form.addRow(with: [label("Supplementary rules"), supplementaryRulesControls()])
         form.column(at: 0).xPlacement = .trailing
         form.column(at: 1).xPlacement = .leading
         form.row(at: 0).yPlacement = .center
+        form.row(at: 1).yPlacement = .top
 
         adBlockStatusLabel.textColor = .secondaryLabelColor
         adBlockStatusLabel.maximumNumberOfLines = 0
@@ -359,6 +363,9 @@ final class PreferencesWindowController: NSWindowController {
         adBlockListURLField.target = self
         adBlockListURLField.action = #selector(applyAdBlockingSettings)
         adBlockListURLField.delegate = self
+        supplementaryRulesTextView.delegate = self
+        supplementaryRulesApplyButton.target = self
+        supplementaryRulesApplyButton.action = #selector(applyAdBlockingSettings)
         adBlockUpdateButton.target = self
         adBlockUpdateButton.action = #selector(updateAdBlockListNow)
         adBlockDefaultURLButton.target = self
@@ -566,6 +573,9 @@ final class PreferencesWindowController: NSWindowController {
         adBlockingButton.state = store.adBlockingEnabled ? .on : .off
         if adBlockListURLField.currentEditor() == nil {
             adBlockListURLField.stringValue = store.adBlockListURLString
+        }
+        if window?.firstResponder !== supplementaryRulesTextView {
+            supplementaryRulesTextView.string = store.supplementaryAdBlockRules
         }
         adBlockUpdateButton.isEnabled = store.adBlockingEnabled && !isAdBlockerUpdating
     }
@@ -792,9 +802,18 @@ final class PreferencesWindowController: NSWindowController {
             adBlockListURLField.stringValue = store.adBlockListURLString
             return
         }
+        let supplementaryRules = supplementaryRulesTextView.string
+        do {
+            try WebAdBlocker.validateSupplementaryRules(supplementaryRules)
+        } catch {
+            NSSound.beep()
+            adBlockStatusLabel.stringValue = "Supplementary rules were not applied: \(error.localizedDescription)"
+            return
+        }
         store.updateAdBlocking(
             enabled: adBlockingButton.state == .on,
-            listURLString: listURLString
+            listURLString: listURLString,
+            supplementaryRules: supplementaryRules
         )
     }
 
@@ -810,6 +829,53 @@ final class PreferencesWindowController: NSWindowController {
     @objc private func useDefaultAdBlockListURL() {
         adBlockListURLField.stringValue = WebAdBlocker.defaultListURLString
         applyAdBlockingSettings()
+    }
+
+    private func supplementaryRulesControls() -> NSView {
+        supplementaryRulesTextView.isRichText = false
+        supplementaryRulesTextView.isAutomaticQuoteSubstitutionEnabled = false
+        supplementaryRulesTextView.isAutomaticDashSubstitutionEnabled = false
+        supplementaryRulesTextView.isAutomaticTextReplacementEnabled = false
+        supplementaryRulesTextView.allowsUndo = true
+        supplementaryRulesTextView.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        supplementaryRulesTextView.textContainerInset = NSSize(width: 6, height: 6)
+        supplementaryRulesTextView.frame = NSRect(x: 0, y: 0, width: 480, height: 110)
+        supplementaryRulesTextView.minSize = NSSize(width: 0, height: 110)
+        supplementaryRulesTextView.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        supplementaryRulesTextView.isVerticallyResizable = true
+        supplementaryRulesTextView.isHorizontallyResizable = false
+        supplementaryRulesTextView.autoresizingMask = [.width]
+        supplementaryRulesTextView.textContainer?.widthTracksTextView = true
+        supplementaryRulesTextView.textContainer?.containerSize = NSSize(
+            width: 0,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        supplementaryRulesTextView.setAccessibilityLabel("Supplementary ad blocking rules")
+
+        let scrollView = NSScrollView()
+        scrollView.borderType = .bezelBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.documentView = supplementaryRulesTextView
+
+        let help = NSTextField(wrappingLabelWithString: "Add one EasyList-compatible rule per line, for example: n1info.rs##.ad-loading-placeholder")
+        help.textColor = .secondaryLabelColor
+        help.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+
+        let controls = NSStackView(views: [scrollView, help, supplementaryRulesApplyButton])
+        controls.orientation = .vertical
+        controls.alignment = .leading
+        controls.spacing = 6
+
+        NSLayoutConstraint.activate([
+            scrollView.widthAnchor.constraint(greaterThanOrEqualToConstant: 480),
+            scrollView.heightAnchor.constraint(equalToConstant: 110),
+            help.widthAnchor.constraint(lessThanOrEqualToConstant: 600)
+        ])
+        return controls
     }
 
     @objc private func resetIconCache() {
@@ -1222,6 +1288,13 @@ extension PreferencesWindowController: NSTextFieldDelegate {
         selectedItemIDs = [feed.id]
         store.updateFeed(feed)
         tableView.reloadData()
+    }
+}
+
+extension PreferencesWindowController: NSTextViewDelegate {
+    func textDidEndEditing(_ notification: Notification) {
+        guard notification.object as? NSTextView === supplementaryRulesTextView else { return }
+        applyAdBlockingSettings()
     }
 }
 

@@ -108,7 +108,7 @@ enum EasyListConverter {
         )
     ]
 
-    static func convert(_ data: Data) throws -> Result {
+    static func convert(_ data: Data, includeBuiltInRules: Bool = true) throws -> Result {
         guard let source = String(data: data, encoding: .utf8) else {
             throw ConversionError.invalidEncoding
         }
@@ -141,7 +141,7 @@ enum EasyListConverter {
             }
         }
 
-        var rules = builtInRules
+        var rules = includeBuiltInRules ? builtInRules : []
         var seenNetworkRules: Set<NetworkRule> = []
         for rule in blockingRules where seenNetworkRules.insert(rule).inserted {
             rules.append(ContentRule(trigger: rule.trigger, action: Action(type: "block", selector: nil)))

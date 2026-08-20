@@ -15,6 +15,7 @@ final class FeedStore {
         var previewMenuHeight: Int?
         var adBlockingEnabled: Bool?
         var adBlockListURLString: String?
+        var supplementaryAdBlockRules: String?
         var storyMenuTitleLength: Int?
         var readStoryIDs: Set<String>?
         var showMenuBarIcon: Bool?
@@ -41,6 +42,7 @@ final class FeedStore {
     private(set) var previewMenuHeight: Int
     private(set) var adBlockingEnabled: Bool
     private(set) var adBlockListURLString: String
+    private(set) var supplementaryAdBlockRules: String
     private(set) var storyMenuTitleLength: Int
     private(set) var showMenuBarIcon: Bool
     private(set) var showUnreadCountInMenuBar: Bool
@@ -77,6 +79,7 @@ final class FeedStore {
                 adBlockingEnabled = decoded.adBlockingEnabled ?? false
                 adBlockListURLString = decoded.adBlockListURLString ?? WebAdBlocker.defaultListURLString
             }
+            supplementaryAdBlockRules = decoded.supplementaryAdBlockRules ?? ""
             storyMenuTitleLength = max(0, decoded.storyMenuTitleLength ?? 0)
             items = decoded.items ?? (decoded.feeds ?? []).map(FeedListItem.init(feed:))
             readStoryIDs = decoded.readStoryIDs ?? []
@@ -98,6 +101,7 @@ final class FeedStore {
             previewMenuHeight = 600
             adBlockingEnabled = false
             adBlockListURLString = WebAdBlocker.defaultListURLString
+            supplementaryAdBlockRules = ""
             storyMenuTitleLength = 0
             items = []
             readStoryIDs = []
@@ -153,9 +157,10 @@ final class FeedStore {
         save()
     }
 
-    func updateAdBlocking(enabled: Bool, listURLString: String) {
+    func updateAdBlocking(enabled: Bool, listURLString: String, supplementaryRules: String) {
         adBlockingEnabled = enabled
         adBlockListURLString = listURLString
+        supplementaryAdBlockRules = supplementaryRules
         save()
     }
 
@@ -332,6 +337,7 @@ final class FeedStore {
             previewMenuHeight: previewMenuHeight,
             adBlockingEnabled: adBlockingEnabled,
             adBlockListURLString: adBlockListURLString,
+            supplementaryAdBlockRules: supplementaryAdBlockRules,
             storyMenuTitleLength: storyMenuTitleLength,
             readStoryIDs: readStoryIDs,
             showMenuBarIcon: showMenuBarIcon,

@@ -81,6 +81,20 @@ final class EasyListConverterTests: XCTestCase {
         XCTAssertNotNil(slashdotBlock)
     }
 
+    func testConvertsSupplementaryRulesWithoutBuiltIns() throws {
+        let source = "n1info.rs##.ad-loading-placeholder"
+
+        let result = try EasyListConverter.convert(Data(source.utf8), includeBuiltInRules: false)
+        let rules = try decodedRules(result.json)
+
+        XCTAssertEqual(result.sourceRuleCount, 1)
+        XCTAssertEqual(result.convertedRuleCount, 1)
+        let rule = try XCTUnwrap(rules.first)
+        XCTAssertEqual((rule["trigger"] as? [String: Any])?["if-domain"] as? [String], ["*n1info.rs"])
+        XCTAssertEqual((rule["action"] as? [String: Any])?["type"] as? String, "css-display-none")
+        XCTAssertEqual((rule["action"] as? [String: Any])?["selector"] as? String, ".ad-loading-placeholder")
+    }
+
     func testRejectsNonUTF8Input() {
         XCTAssertThrowsError(try EasyListConverter.convert(Data([0xFF, 0xFE]))) { error in
             guard case EasyListConverter.ConversionError.invalidEncoding = error else {

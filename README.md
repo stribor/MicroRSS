@@ -62,7 +62,7 @@ The Settings window includes:
 
 - **Feeds**: manage feed names, URLs, refresh overrides, separators, ordering, and OPML import/export.
 - **General**: configure refresh timing, launch at login, Dock icon visibility, notifications, preview size, story title length, unread counts, menu bar icon behavior, and global menu actions.
-- **Web**: enable preview ad blocking, choose an EasyList-compatible subscription URL, update it manually, and view update status.
+- **Web**: enable preview ad blocking, choose an EasyList-compatible subscription URL, add local supplementary rules, update the subscription manually, and view update status.
 - **About**: app version and short project description.
 
 ## Project Layout
@@ -91,5 +91,6 @@ Ad blocking is disabled by default and MicroRSS does not request a filter list
 until the user enables it. The default subscription URL points directly to
 [EasyList](https://easylist.to/); compatible custom subscription URLs can be
 used instead. Conversion happens locally without third-party runtime
-dependencies. EasyList is attributed to the EasyList authors and is available
-under GPLv3 or CC BY-SA 3.0 (or later).
+dependencies. Supplementary EasyList-compatible rules are stored locally and
+compiled alongside the downloaded subscription. EasyList is attributed to the
+EasyList authors and is available under GPLv3 or CC BY-SA 3.0 (or later).

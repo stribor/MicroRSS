@@ -19,6 +19,7 @@ final class FeedStoreTests: XCTestCase {
         XCTAssertEqual(store.globalRefreshMinutes, 30)
         XCTAssertEqual(store.previewMenuWidth, 800)
         XCTAssertTrue(store.hideDockIcon)
+        XCTAssertEqual(store.supplementaryAdBlockRules, "")
 
         store.updateGeneral(
             globalRefreshMinutes: -10,
@@ -38,6 +39,11 @@ final class FeedStoreTests: XCTestCase {
             showGlobalMarkAllUnread: false,
             showGlobalShowAllUnread: false
         )
+        store.updateAdBlocking(
+            enabled: true,
+            listURLString: WebAdBlocker.defaultListURLString,
+            supplementaryRules: "n1info.rs##.ad-loading-placeholder"
+        )
 
         let restored = FeedStore(defaults: defaults)
         XCTAssertFalse(restored.isFreshInstall)
@@ -48,6 +54,8 @@ final class FeedStoreTests: XCTestCase {
         XCTAssertEqual(restored.storyMenuTitleLength, 0)
         XCTAssertFalse(restored.notificationsEnabled)
         XCTAssertFalse(restored.showGlobalShowAllUnread)
+        XCTAssertTrue(restored.adBlockingEnabled)
+        XCTAssertEqual(restored.supplementaryAdBlockRules, "n1info.rs##.ad-loading-placeholder")
     }
 
     func testItemsPersistInOrderWithSeparators() throws {

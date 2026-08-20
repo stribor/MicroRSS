@@ -29,6 +29,7 @@ final class WebAdBlocker {
     private enum RuleIdentifier {
         static let remoteA = "MicroRSS.AdBlocker.EasyList.A.v4"
         static let remoteB = "MicroRSS.AdBlocker.EasyList.B.v4"
+        static let supplementary = "MicroRSS.AdBlocker.Supplementary.v1"
 
         static func isCurrent(_ identifier: String) -> Bool {
             identifier == remoteA || identifier == remoteB
@@ -44,11 +45,16 @@ final class WebAdBlocker {
     private var enabled = false
     private var sourceURL: URL?
     private var activeRuleList: WKContentRuleList?
+    private var activeSupplementaryRuleList: WKContentRuleList?
     private var activeIdentifier: String?
+    private var supplementaryRules = ""
     private var preparationTask: Task<WKContentRuleList?, Never>?
+    private var supplementaryPreparationTask: Task<WKContentRuleList?, Never>?
     private var updateTask: Task<Void, Never>?
     private var updateTimer: Timer?
     private var observers: [UUID: (State) -> Void] = [:]
+    private var activeRemoteRuleCount: Int?
+    private var activeSupplementaryRuleCount: Int?
     private(set) var activeRuleCount: Int?
 
     private(set) var state: State = .disabled {
@@ -63,13 +69,23 @@ final class WebAdBlocker {
         self.ruleStore = ruleStore
     }
 
-    func configure(enabled: Bool, listURLString: String) {
+    func configure(enabled: Bool, listURLString: String, supplementaryRules: String) {
         let normalizedURL = Self.validListURL(from: listURLString)
         let sourceChanged = defaults.string(forKey: DefaultsKey.activeSourceURL) != normalizedURL?.absoluteString
         let storedIdentifier = defaults.string(forKey: DefaultsKey.activeIdentifier)
         let needsRuleListMigration = storedIdentifier.map { !RuleIdentifier.isCurrent($0) } ?? false
+        let supplementaryRulesChanged = self.supplementaryRules != supplementaryRules
         self.enabled = enabled
         sourceURL = normalizedURL
+        self.supplementaryRules = supplementaryRules
+
+        if supplementaryRulesChanged {
+            supplementaryPreparationTask?.cancel()
+            supplementaryPreparationTask = nil
+            activeSupplementaryRuleList = nil
+            activeSupplementaryRuleCount = nil
+            refreshActiveRuleCount()
+        }
 
         guard enabled else {
             state = .disabled
@@ -87,6 +103,8 @@ final class WebAdBlocker {
             )
             return
         }
+
+        prepareSupplementaryRuleListIfNeeded()
 
         if activeRuleList == nil {
             state = .preparing
@@ -124,8 +142,14 @@ final class WebAdBlocker {
                 return
             }
             let ruleList = await self.ruleListForPreview()
-            if self.enabled, let configuration, let ruleList {
-                configuration.userContentController.add(ruleList)
+            let supplementaryRuleList = await self.ensureSupplementaryRuleList()
+            if self.enabled, let configuration {
+                if let ruleList {
+                    configuration.userContentController.add(ruleList)
+                }
+                if let supplementaryRuleList {
+                    configuration.userContentController.add(supplementaryRuleList)
+                }
             }
             completion()
         }
@@ -157,6 +181,11 @@ final class WebAdBlocker {
         return url
     }
 
+    static func validateSupplementaryRules(_ rules: String) throws {
+        guard !rules.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        _ = try EasyListConverter.convert(Data(rules.utf8), includeBuiltInRules: false)
+    }
+
     private var lastSuccessfulUpdate: Date? {
         defaults.object(forKey: DefaultsKey.lastSuccessfulUpdate) as? Date
     }
@@ -177,7 +206,8 @@ final class WebAdBlocker {
                 self.activeIdentifier = storedIdentifier
                 self.activeRuleList = storedList
                 let storedRuleCount = self.defaults.integer(forKey: DefaultsKey.activeRuleCount)
-                self.activeRuleCount = storedRuleCount > 0 ? storedRuleCount : nil
+                self.activeRemoteRuleCount = storedRuleCount > 0 ? storedRuleCount : nil
+                self.refreshActiveRuleCount()
                 self.state = self.enabled ? .ready(lastSuccessfulUpdate: self.lastSuccessfulUpdate) : .disabled
                 return storedList
             }
@@ -186,6 +216,66 @@ final class WebAdBlocker {
         preparationTask = task
         let result = await task.value
         preparationTask = nil
+        return result
+    }
+
+    private func prepareSupplementaryRuleListIfNeeded() {
+        guard enabled,
+              activeSupplementaryRuleList == nil,
+              supplementaryPreparationTask == nil,
+              !supplementaryRules.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+
+        let source = supplementaryRules
+        let task = Task { @MainActor [weak self] () -> WKContentRuleList? in
+            guard let self else { return nil }
+            do {
+                let conversion = try await Task.detached(priority: .utility) {
+                    try EasyListConverter.convert(Data(source.utf8), includeBuiltInRules: false)
+                }.value
+                try Task.checkCancellation()
+                guard self.supplementaryRules == source else { return nil }
+                let ruleList = try await self.compileRuleList(
+                    identifier: RuleIdentifier.supplementary,
+                    json: conversion.json
+                )
+                try Task.checkCancellation()
+                guard self.supplementaryRules == source else { return nil }
+                self.activeSupplementaryRuleList = ruleList
+                self.activeSupplementaryRuleCount = conversion.convertedRuleCount
+                self.refreshActiveRuleCount()
+                self.supplementaryPreparationTask = nil
+                return ruleList
+            } catch is CancellationError {
+                return nil
+            } catch {
+                guard self.supplementaryRules == source else { return nil }
+                self.supplementaryPreparationTask = nil
+                self.state = .failed(
+                    message: "Supplementary rules could not be compiled: \(error.localizedDescription)",
+                    lastSuccessfulUpdate: self.lastSuccessfulUpdate
+                )
+                return nil
+            }
+        }
+        supplementaryPreparationTask = task
+    }
+
+    private func ensureSupplementaryRuleList() async -> WKContentRuleList? {
+        guard !supplementaryRules.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        if let activeSupplementaryRuleList {
+            return activeSupplementaryRuleList
+        }
+        prepareSupplementaryRuleListIfNeeded()
+        guard let task = supplementaryPreparationTask else { return nil }
+        let source = supplementaryRules
+        let result = await task.value
+        if supplementaryRules == source {
+            supplementaryPreparationTask = nil
+        }
         return result
     }
 
@@ -310,7 +400,8 @@ final class WebAdBlocker {
 
             activeRuleList = candidate
             activeIdentifier = candidateIdentifier
-            activeRuleCount = conversion.convertedRuleCount
+            activeRemoteRuleCount = conversion.convertedRuleCount
+            refreshActiveRuleCount()
             defaults.set(candidateIdentifier, forKey: DefaultsKey.activeIdentifier)
             defaults.set(url.absoluteString, forKey: DefaultsKey.activeSourceURL)
             defaults.set(conversion.convertedRuleCount, forKey: DefaultsKey.activeRuleCount)
@@ -328,6 +419,11 @@ final class WebAdBlocker {
 
     private func nextRemoteIdentifier() -> String {
         activeIdentifier == RuleIdentifier.remoteA ? RuleIdentifier.remoteB : RuleIdentifier.remoteA
+    }
+
+    private func refreshActiveRuleCount() {
+        let counts = [activeRemoteRuleCount, activeSupplementaryRuleCount].compactMap { $0 }
+        activeRuleCount = counts.isEmpty ? nil : counts.reduce(0, +)
     }
 
     private func markUpdateSuccessful(response: HTTPURLResponse, sourceURL: URL) {

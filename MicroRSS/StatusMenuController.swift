@@ -64,7 +64,8 @@ final class StatusMenuController: NSObject {
     private func configureWebAdBlocker() {
         WebAdBlocker.shared.configure(
             enabled: store.adBlockingEnabled,
-            listURLString: store.adBlockListURLString
+            listURLString: store.adBlockListURLString,
+            supplementaryRules: store.supplementaryAdBlockRules
         )
     }
 
