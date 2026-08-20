@@ -873,7 +873,12 @@ private final class StoryPreviewMenuView: NSView {
     }
 
     func openBrowser() {
-        scheduleMarkRead()
+        // NSMenuDelegate can announce a submenu before AppKit has attached its
+        // custom view to the popup window. Starting WebKit setup in that gap can
+        // complete immediately, fail the window check below, and leave this view
+        // permanently stuck in its loading state. viewDidMoveToWindow() retries
+        // once the preview is actually visible.
+        guard window != nil else { return }
         guard !didStartLoading else { return }
         didStartLoading = true
         let loadID = UUID()
@@ -888,6 +893,7 @@ private final class StoryPreviewMenuView: NSView {
             webView.autoresizingMask = [.width, .height]
             self.addSubview(webView)
             self.webView = webView
+            self.scheduleMarkRead()
 
             if let request = StatusMenuController.storyRequest(for: self.story, feed: self.feed) {
                 WebPreviewSession.load(request, in: webView, feed: self.feed)
