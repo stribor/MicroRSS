@@ -13,6 +13,7 @@ final class StatusMenuController: NSObject {
     private var storiesByFeed: [UUID: [FeedStory]] = [:]
     private var knownStoryIDsByFeed: [UUID: Set<String>] = [:]
     private var refreshTasks: [UUID: Task<Void, Never>] = [:]
+    private var refreshSchedule: [UUID: Int] = [:]
     private var preferencesWindowController: PreferencesWindowController?
     private var previewWindows: [PreviewWindowRecord] = []
     private var storeObserverID: UUID?
@@ -43,7 +44,7 @@ final class StatusMenuController: NSObject {
         configureStatusItem()
         storeObserverID = store.observe { [weak self] in
             self?.configureWebAdBlocker()
-            self?.rescheduleRefresh()
+            self?.rescheduleRefreshIfNeeded()
             self?.rebuildMenu()
         }
         rescheduleRefresh()
@@ -323,15 +324,31 @@ final class StatusMenuController: NSObject {
     }
 
     private func rescheduleRefresh() {
+        rescheduleRefresh(using: currentRefreshSchedule())
+    }
+
+    private func rescheduleRefreshIfNeeded() {
+        let schedule = currentRefreshSchedule()
+        guard schedule != refreshSchedule else { return }
+        rescheduleRefresh(using: schedule)
+    }
+
+    private func rescheduleRefresh(using schedule: [UUID: Int]) {
+        refreshSchedule = schedule
         refreshTasks.values.forEach { $0.cancel() }
         refreshTasks.removeAll()
         guard !updatesPaused else { return }
-        for feed in store.feeds {
-            guard refreshMinutes(for: feed.id) > 0 else { continue }
-            refreshTasks[feed.id] = Task { [weak self] in
-                await self?.refreshLoop(feedID: feed.id)
+        for (feedID, minutes) in schedule where minutes > 0 {
+            refreshTasks[feedID] = Task { [weak self] in
+                await self?.refreshLoop(feedID: feedID)
             }
         }
+    }
+
+    private func currentRefreshSchedule() -> [UUID: Int] {
+        Dictionary(uniqueKeysWithValues: store.feeds.map { feed in
+            (feed.id, feed.refreshMinutes ?? store.globalRefreshMinutes)
+        })
     }
 
     private func refreshLoop(feedID: UUID) async {
