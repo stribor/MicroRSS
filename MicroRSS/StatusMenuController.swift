@@ -552,21 +552,24 @@ final class StatusMenuController: NSObject {
 
     @objc private func openPreview(_ sender: NSMenuItem) {
         guard let context = sender.representedObject as? PreviewWindowContext else { return }
+        dismissInlinePreviewMenus()
+
         let key = previewWindowKey(for: context.story)
         if let existing = previewWindows.first(where: { $0.key == key })?.controller {
+            NSApp.activate(ignoringOtherApps: true)
             existing.showWindow(nil)
             existing.window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
             return
         }
 
-        store.markStory(context.story, read: true)
+        store.markStory(context.story, read: true, notifyObservers: false)
         let controller = PreviewWindowController(story: context.story, feed: context.feed)
         previewWindows.append(PreviewWindowRecord(key: key, controller: controller))
         controller.window?.delegate = self
-        controller.showWindow(nil)
-        updateVisibleMenuItems()
         NSApp.activate(ignoringOtherApps: true)
+        controller.showWindow(nil)
+        controller.window?.makeKeyAndOrderFront(nil)
+        updateVisibleMenuItems()
     }
 
     @objc private func openStory(_ sender: NSMenuItem) {
