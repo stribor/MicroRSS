@@ -20,6 +20,8 @@ final class StatusMenuController: NSObject {
     private var updatesPaused = false
     private var activeInlinePreviewMenus: Set<ObjectIdentifier> = []
     private var menuRebuildPending = false
+    private var isMenuTracking = false
+    private var menuTrackingGeneration = UUID()
 
     init(store: FeedStore, service: RSSService) {
         self.store = store
@@ -71,7 +73,7 @@ final class StatusMenuController: NSObject {
     }
 
     private func rebuildMenu() {
-        guard activeInlinePreviewMenus.isEmpty else {
+        guard !isMenuTracking, activeInlinePreviewMenus.isEmpty else {
             menuRebuildPending = true
             return
         }
@@ -632,15 +634,24 @@ final class StatusMenuController: NSObject {
 
 extension StatusMenuController: NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
+        if menu === self.menu {
+            isMenuTracking = true
+            menuTrackingGeneration = UUID()
+        }
         let previews = menu.items.compactMap { $0.view as? StoryPreviewMenuView }
         guard !previews.isEmpty else { return }
 
         activeInlinePreviewMenus.insert(ObjectIdentifier(menu))
-        previews.forEach { $0.openBrowser() }
+        previews.forEach { $0.beginPreview() }
     }
 
     func menuDidClose(_ menu: NSMenu) {
+        let windows = menu === self.menu ? inlinePreviewWindows(in: menu) : []
+        if menu === self.menu {
+            isMenuTracking = false
+        }
         closeInlineBrowsers(in: menu)
+        hideClosedPreviewWindows(windows)
         applyPendingMenuRebuildIfPossible()
     }
 
@@ -649,15 +660,23 @@ extension StatusMenuController: NSMenuDelegate {
         cancelTracking(in: menu)
         closeInlineBrowsers(in: menu)
         activeInlinePreviewMenus.removeAll()
+        isMenuTracking = false
+        hideClosedPreviewWindows(previewWindows)
         applyPendingMenuRebuildIfPossible()
+    }
 
-        // AppKit normally orders submenu panels out when tracking ends. If the app
-        // deactivates during nested custom-view tracking, that cleanup can rarely
+    private func hideClosedPreviewWindows(_ windows: [NSWindow]) {
+        let generation = menuTrackingGeneration
+        // AppKit normally orders submenu panels out when tracking ends. If the menu
+        // closes during nested custom-view tracking, that cleanup can rarely
         // be missed, leaving a high-level NSPopupMenuWindow above other apps.
         // Check on the next run-loop turn, after AppKit has finished cancellation,
         // and hide only panels that hosted one of our inline preview views.
-        DispatchQueue.main.async {
-            previewWindows.forEach { window in
+        DispatchQueue.main.async { [weak self] in
+            // AppKit can reuse a panel if the user immediately reopens the menu.
+            guard let self, !self.isMenuTracking,
+                  self.menuTrackingGeneration == generation else { return }
+            windows.forEach { window in
                 if window.isVisible {
                     window.orderOut(nil)
                 }
@@ -681,7 +700,7 @@ extension StatusMenuController: NSMenuDelegate {
         func collect(from menu: NSMenu) {
             for item in menu.items {
                 if let preview = item.view as? StoryPreviewMenuView,
-                   let window = preview.window,
+                   let window = preview.window ?? preview.lastPreviewWindow,
                    identifiers.insert(ObjectIdentifier(window)).inserted {
                     windows.append(window)
                 }
@@ -699,7 +718,7 @@ extension StatusMenuController: NSMenuDelegate {
         let previews = menu.items.compactMap { $0.view as? StoryPreviewMenuView }
         if !previews.isEmpty {
             activeInlinePreviewMenus.remove(ObjectIdentifier(menu))
-            previews.forEach { $0.closeBrowser() }
+            previews.forEach { $0.endPreview() }
         }
 
         for item in menu.items {
@@ -710,7 +729,7 @@ extension StatusMenuController: NSMenuDelegate {
     }
 
     private func applyPendingMenuRebuildIfPossible() {
-        guard menuRebuildPending, activeInlinePreviewMenus.isEmpty else { return }
+        guard menuRebuildPending, !isMenuTracking, activeInlinePreviewMenus.isEmpty else { return }
         rebuildMenu()
     }
 }
@@ -846,6 +865,8 @@ private final class StoryPreviewMenuView: NSView {
     private var webView: WKWebView?
     private var webViewLoadID: UUID?
     private var didStartLoading = false
+    private var isPreviewOpen = false
+    private(set) weak var lastPreviewWindow: NSWindow?
     private var markReadTask: Task<Void, Never>?
     private var didMarkRead = false
 
@@ -890,22 +911,34 @@ private final class StoryPreviewMenuView: NSView {
             return
         }
 
+        lastPreviewWindow = window
         openBrowser()
     }
 
-    func openBrowser() {
+    func beginPreview() {
+        isPreviewOpen = true
+        openBrowser()
+    }
+
+    func endPreview() {
+        isPreviewOpen = false
+        closeBrowser()
+    }
+
+    private func openBrowser() {
         // NSMenuDelegate can announce a submenu before AppKit has attached its
         // custom view to the popup window. Starting WebKit setup in that gap can
         // complete immediately, fail the window check below, and leave this view
         // permanently stuck in its loading state. viewDidMoveToWindow() retries
         // once the preview is actually visible.
-        guard window != nil else { return }
+        guard isPreviewOpen, window != nil else { return }
         guard !didStartLoading else { return }
         didStartLoading = true
         let loadID = UUID()
         webViewLoadID = loadID
         WebPreviewSession.makeWebView(frame: bounds) { [weak self] webView in
             guard let self,
+                  self.isPreviewOpen,
                   self.didStartLoading,
                   self.webViewLoadID == loadID,
                   self.window != nil else {
