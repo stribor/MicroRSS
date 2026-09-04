@@ -17,6 +17,7 @@ MicroRSS is a minimal native macOS RSS reader inspired by RSS Menu and RSS Bot. 
 
 - Commit after each contextual change so the project history stays readable.
 - Keep commits focused: project setup, feed model, UI behavior, persistence, networking, and polish should be separate when possible.
+- Before pushing, squash unpushed intermediate implementations, corrections, and follow-up tests for the same contextual change into one coherent commit. Keep distinct fixes, features, and unrelated cleanup in separate commits; do not squash solely because commits are adjacent. Describe the final behavior and scope in the resulting commit message. Verify that all commits being rewritten are unpushed; do not rewrite pushed history without explicit authorization.
 - Do not add external dependencies unless the stability or size tradeoff is clearly worth it.
 - Prefer native Apple APIs and small local helpers.
 
