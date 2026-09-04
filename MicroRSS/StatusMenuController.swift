@@ -21,7 +21,7 @@ final class StatusMenuController: NSObject {
     private var activeInlinePreviewMenus: Set<ObjectIdentifier> = []
     private var menuRebuildPending = false
     private var isMenuTracking = false
-    private var menuTrackingGeneration = UUID()
+    private let inlinePreviewPanels = InlinePreviewPanelRegistry()
 
     init(store: FeedStore, service: RSSService) {
         self.store = store
@@ -290,7 +290,8 @@ final class StatusMenuController: NSObject {
             story: story,
             feed: feed,
             size: NSSize(width: store.previewMenuWidth, height: store.previewMenuHeight),
-            markReadDelaySeconds: store.previewMarkReadDelaySeconds
+            markReadDelaySeconds: store.previewMarkReadDelaySeconds,
+            panels: inlinePreviewPanels
         ) { [weak self, weak item] story in
             self?.markStoryReadFromPreview(story, menuItem: item)
         }
@@ -636,7 +637,6 @@ extension StatusMenuController: NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) {
         if menu === self.menu {
             isMenuTracking = true
-            menuTrackingGeneration = UUID()
         }
         let previews = menu.items.compactMap { $0.view as? StoryPreviewMenuView }
         guard !previews.isEmpty else { return }
@@ -646,41 +646,29 @@ extension StatusMenuController: NSMenuDelegate {
     }
 
     func menuDidClose(_ menu: NSMenu) {
-        let windows = menu === self.menu ? inlinePreviewWindows(in: menu) : []
         if menu === self.menu {
             isMenuTracking = false
         }
         closeInlineBrowsers(in: menu)
-        hideClosedPreviewWindows(windows)
+        hideClosedPreviewWindows()
         applyPendingMenuRebuildIfPossible()
     }
 
     private func dismissInlinePreviewMenus() {
-        let previewWindows = inlinePreviewWindows(in: menu)
         cancelTracking(in: menu)
         closeInlineBrowsers(in: menu)
         activeInlinePreviewMenus.removeAll()
         isMenuTracking = false
-        hideClosedPreviewWindows(previewWindows)
+        hideClosedPreviewWindows()
         applyPendingMenuRebuildIfPossible()
     }
 
-    private func hideClosedPreviewWindows(_ windows: [NSWindow]) {
-        let generation = menuTrackingGeneration
-        // AppKit normally orders submenu panels out when tracking ends. If the menu
-        // closes during nested custom-view tracking, that cleanup can rarely
-        // be missed, leaving a high-level NSPopupMenuWindow above other apps.
-        // Check on the next run-loop turn, after AppKit has finished cancellation,
-        // and hide only panels that hosted one of our inline preview views.
+    private func hideClosedPreviewWindows() {
+        // Run after AppKit finishes cancellation. The registry outlives menu
+        // rebuilds and detached preview views, so orphaned panels remain reachable.
         DispatchQueue.main.async { [weak self] in
-            // AppKit can reuse a panel if the user immediately reopens the menu.
-            guard let self, !self.isMenuTracking,
-                  self.menuTrackingGeneration == generation else { return }
-            windows.forEach { window in
-                if window.isVisible {
-                    window.orderOut(nil)
-                }
-            }
+            guard let self else { return }
+            self.inlinePreviewPanels.hideClosedPanels(isMenuTracking: self.isMenuTracking)
         }
     }
 
@@ -691,27 +679,6 @@ extension StatusMenuController: NSMenuDelegate {
             }
         }
         menu.cancelTrackingWithoutAnimation()
-    }
-
-    private func inlinePreviewWindows(in menu: NSMenu) -> [NSWindow] {
-        var windows: [NSWindow] = []
-        var identifiers: Set<ObjectIdentifier> = []
-
-        func collect(from menu: NSMenu) {
-            for item in menu.items {
-                if let preview = item.view as? StoryPreviewMenuView,
-                   let window = preview.window ?? preview.lastPreviewWindow,
-                   identifiers.insert(ObjectIdentifier(window)).inserted {
-                    windows.append(window)
-                }
-                if let submenu = item.submenu {
-                    collect(from: submenu)
-                }
-            }
-        }
-
-        collect(from: menu)
-        return windows
     }
 
     private func closeInlineBrowsers(in menu: NSMenu) {
@@ -856,6 +823,26 @@ private final class FeedNotificationController: NSObject, UNUserNotificationCent
     }
 }
 
+@MainActor
+final class InlinePreviewPanelRegistry {
+    // Weak references do not keep AppKit's discarded panels alive. A visible
+    // orphan is still owned by AppKit and remains discoverable here.
+    private let windows = NSHashTable<NSWindow>.weakObjects()
+
+    func register(_ window: NSWindow) {
+        windows.add(window)
+    }
+
+    func hideClosedPanels(isMenuTracking: Bool) {
+        // A pending cleanup must not hide a panel reused by a reopened menu.
+        // Keep every record so the next closure also cleans up older orphans.
+        guard !isMenuTracking else { return }
+        for window in windows.allObjects where window.isVisible {
+            window.orderOut(nil)
+        }
+    }
+}
+
 private final class StoryPreviewMenuView: NSView {
     private let story: FeedStory
     private let feed: Feed?
@@ -866,16 +853,17 @@ private final class StoryPreviewMenuView: NSView {
     private var webViewLoadID: UUID?
     private var didStartLoading = false
     private var isPreviewOpen = false
-    private(set) weak var lastPreviewWindow: NSWindow?
+    private let panels: InlinePreviewPanelRegistry
     private var markReadTask: Task<Void, Never>?
     private var didMarkRead = false
 
-    init(story: FeedStory, feed: Feed?, size: NSSize, markReadDelaySeconds: Int, markRead: @escaping (FeedStory) -> Void) {
+    init(story: FeedStory, feed: Feed?, size: NSSize, markReadDelaySeconds: Int, panels: InlinePreviewPanelRegistry, markRead: @escaping (FeedStory) -> Void) {
         self.story = story
         self.feed = feed
         previewSize = NSSize(width: max(240, size.width), height: max(240, size.height))
         self.markReadDelaySeconds = max(0, markReadDelaySeconds)
         self.markRead = markRead
+        self.panels = panels
         super.init(frame: NSRect(origin: .zero, size: previewSize))
     }
 
@@ -906,12 +894,12 @@ private final class StoryPreviewMenuView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        if window == nil {
+        guard let window else {
             closeBrowser()
             return
         }
 
-        lastPreviewWindow = window
+        panels.register(window)
         openBrowser()
     }
 
