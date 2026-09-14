@@ -1,6 +1,9 @@
 import AppKit
+import OSLog
 import UserNotifications
 import WebKit
+
+private let inlineCopyLogger = Logger(subsystem: "org.stribor.microrss", category: "InlineCopy")
 
 @MainActor
 final class StatusMenuController: NSObject {
@@ -19,6 +22,7 @@ final class StatusMenuController: NSObject {
     private var storeObserverID: UUID?
     private var updatesPaused = false
     private var activeInlinePreviewMenus: Set<ObjectIdentifier> = []
+    private var activeInlinePreview: StoryPreviewMenuView?
     private var menuRebuildPending = false
     private var isMenuTracking = false
     private let inlinePreviewPanels = InlinePreviewPanelRegistry()
@@ -286,7 +290,7 @@ final class StatusMenuController: NSObject {
         item.state = store.isStoryRead(story) ? .off : .on
 
         let preview = NSMenuItem()
-        preview.view = StoryPreviewMenuView(
+        let previewView = StoryPreviewMenuView(
             story: story,
             feed: feed,
             size: NSSize(width: store.previewMenuWidth, height: store.previewMenuHeight),
@@ -295,6 +299,7 @@ final class StatusMenuController: NSObject {
         ) { [weak self, weak item] story in
             self?.markStoryReadFromPreview(story, menuItem: item)
         }
+        preview.view = previewView
         submenu.addItem(preview)
 
         let previewWindow = NSMenuItem(title: "Open Preview Window", action: #selector(openPreview(_:)), keyEquivalent: "")
@@ -642,6 +647,11 @@ extension StatusMenuController: NSMenuDelegate {
         guard !previews.isEmpty else { return }
 
         activeInlinePreviewMenus.insert(ObjectIdentifier(menu))
+        activeInlinePreview = previews.first
+        if let activeInlinePreview {
+            EditingCommandRouter.shared.beginInlineSession(target: activeInlinePreview)
+        }
+        inlineCopyLogger.notice("Inline preview opened; editing router session started")
         previews.forEach { $0.beginPreview() }
     }
 
@@ -649,9 +659,18 @@ extension StatusMenuController: NSMenuDelegate {
         if menu === self.menu {
             isMenuTracking = false
         }
-        closeInlineBrowsers(in: menu)
-        hideClosedPreviewWindows()
-        applyPendingMenuRebuildIfPossible()
+        EditingCommandRouter.shared.endInlineHotKeyInterception()
+        // NSMenu dispatches a key-equivalent action after notifying its delegate
+        // that tracking closed. Keep the custom view and WebKit selection alive
+        // until that action has had a chance to start its asynchronous DOM work.
+        inlineCopyLogger.notice("Menu closed; scheduling delayed preview cleanup")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self, menu] in
+            guard let self else { return }
+            inlineCopyLogger.notice("Running delayed preview cleanup")
+            self.closeInlineBrowsers(in: menu)
+            self.hideClosedPreviewWindows()
+            self.applyPendingMenuRebuildIfPossible()
+        }
     }
 
     private func dismissInlinePreviewMenus() {
@@ -685,6 +704,12 @@ extension StatusMenuController: NSMenuDelegate {
         let previews = menu.items.compactMap { $0.view as? StoryPreviewMenuView }
         if !previews.isEmpty {
             activeInlinePreviewMenus.remove(ObjectIdentifier(menu))
+            if previews.contains(where: { $0 === activeInlinePreview }) {
+                if let activeInlinePreview {
+                    EditingCommandRouter.shared.clearInlineTarget(activeInlinePreview)
+                }
+                activeInlinePreview = nil
+            }
             previews.forEach { $0.endPreview() }
         }
 
@@ -699,6 +724,7 @@ extension StatusMenuController: NSMenuDelegate {
         guard menuRebuildPending, !isMenuTracking, activeInlinePreviewMenus.isEmpty else { return }
         rebuildMenu()
     }
+
 }
 
 extension StatusMenuController: NSWindowDelegate {
@@ -843,7 +869,7 @@ final class InlinePreviewPanelRegistry {
     }
 }
 
-private final class StoryPreviewMenuView: NSView {
+private final class StoryPreviewMenuView: NSView, EditingCommandTarget {
     private let story: FeedStory
     private let feed: Feed?
     private let previewSize: NSSize
@@ -856,6 +882,8 @@ private final class StoryPreviewMenuView: NSView {
     private let panels: InlinePreviewPanelRegistry
     private var markReadTask: Task<Void, Never>?
     private var didMarkRead = false
+    private var pendingEditingOperations = 0
+    private var closeBrowserWhenEditingCompletes = false
 
     init(story: FeedStory, feed: Feed?, size: NSSize, markReadDelaySeconds: Int, panels: InlinePreviewPanelRegistry, markRead: @escaping (FeedStory) -> Void) {
         self.story = story
@@ -895,7 +923,12 @@ private final class StoryPreviewMenuView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard let window else {
-            closeBrowser()
+            // AppKit detaches a custom menu-item view before it dispatches the
+            // key-equivalent action that closed the menu. menuDidClose(_:) owns
+            // the delayed teardown while this preview session is still active.
+            if !isPreviewOpen {
+                closeBrowser()
+            }
             return
         }
 
@@ -905,6 +938,7 @@ private final class StoryPreviewMenuView: NSView {
 
     func beginPreview() {
         isPreviewOpen = true
+        closeBrowserWhenEditingCompletes = false
         openBrowser()
     }
 
@@ -948,6 +982,11 @@ private final class StoryPreviewMenuView: NSView {
     func closeBrowser() {
         cancelMarkReadTask()
         webViewLoadID = nil
+        guard pendingEditingOperations == 0 else {
+            closeBrowserWhenEditingCompletes = true
+            return
+        }
+        closeBrowserWhenEditingCompletes = false
         guard let webView else {
             didStartLoading = false
             return
@@ -988,6 +1027,45 @@ private final class StoryPreviewMenuView: NSView {
         markReadTask = nil
     }
 
+    func cutSelection() {
+        performWebEditingOperation { webView, completion in
+            WebPreviewEditing.cutSelection(in: webView, completion: completion)
+        }
+    }
+
+    func copySelection() {
+        inlineCopyLogger.notice("Preview copy requested; WebView available: \(self.webView != nil, privacy: .public)")
+        performWebEditingOperation { webView, completion in
+            WebPreviewEditing.copySelection(in: webView, completion: completion)
+        }
+    }
+
+    func pasteClipboard() {
+        guard let text = NSPasteboard.general.string(forType: .string) else { return }
+        performWebEditingOperation { webView, completion in
+            WebPreviewEditing.paste(text, in: webView, completion: completion)
+        }
+    }
+
+    func selectAllContent() {
+        performWebEditingOperation { webView, completion in
+            WebPreviewEditing.selectAll(in: webView, completion: completion)
+        }
+    }
+
+    private func performWebEditingOperation(
+        _ operation: (WKWebView, @escaping () -> Void) -> Void
+    ) {
+        guard let webView else { return }
+        pendingEditingOperations += 1
+        operation(webView) { [self] in
+            pendingEditingOperations -= 1
+            if pendingEditingOperations == 0, closeBrowserWhenEditingCompletes {
+                closeBrowser()
+            }
+        }
+    }
+
     private static func summaryHTML(for story: FeedStory) -> String {
         """
         <!doctype html>
@@ -997,6 +1075,138 @@ private final class StoryPreviewMenuView: NSView {
         </html>
         """
     }
+}
+
+@MainActor
+enum WebPreviewEditing {
+    static func copySelection(
+        in webView: WKWebView,
+        pasteboard: NSPasteboard = .general,
+        completion: @escaping () -> Void
+    ) {
+        inlineCopyLogger.notice("Starting WebKit selection evaluation")
+        selectedText(in: webView) { text, error in
+            defer { completion() }
+            if let error {
+                inlineCopyLogger.error("WebKit selection evaluation failed: \(error.localizedDescription, privacy: .public)")
+            }
+            inlineCopyLogger.notice("WebKit selection evaluation completed; characters: \(text.count, privacy: .public)")
+            guard !text.isEmpty else { return }
+            pasteboard.clearContents()
+            let wroteString = pasteboard.setString(text, forType: .string)
+            inlineCopyLogger.notice("Pasteboard write completed: \(wroteString, privacy: .public); change count: \(pasteboard.changeCount, privacy: .public)")
+        }
+    }
+
+    static func cutSelection(
+        in webView: WKWebView,
+        pasteboard: NSPasteboard = .general,
+        completion: @escaping () -> Void
+    ) {
+        webView.evaluateJavaScript(cutSelectionScript) { result, _ in
+            defer { completion() }
+            guard let text = result as? String, !text.isEmpty else { return }
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+        }
+    }
+
+    static func paste(_ text: String, in webView: WKWebView, completion: @escaping () -> Void) {
+        guard let literal = javaScriptLiteral(for: text) else {
+            completion()
+            return
+        }
+        webView.evaluateJavaScript(pasteScript(textLiteral: literal)) { _, _ in completion() }
+    }
+
+    static func selectAll(in webView: WKWebView, completion: @escaping () -> Void) {
+        webView.evaluateJavaScript(selectAllScript) { _, _ in completion() }
+    }
+
+    private static func selectedText(in webView: WKWebView, completion: @escaping (String, Error?) -> Void) {
+        webView.evaluateJavaScript(selectedTextScript) { result, error in
+            completion(result as? String ?? "", error)
+        }
+    }
+
+    private static func javaScriptLiteral(for string: String) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: string, options: .fragmentsAllowed) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static let selectedTextScript = """
+    (() => {
+        const active = document.activeElement;
+        if ((active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)
+            && active.selectionStart !== null && active.selectionEnd !== null) {
+            return active.value.substring(active.selectionStart, active.selectionEnd);
+        }
+        return window.getSelection()?.toString() ?? '';
+    })()
+    """
+
+    private static let cutSelectionScript = """
+    (() => {
+        const active = document.activeElement;
+        if ((active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)
+            && !active.readOnly && !active.disabled
+            && active.selectionStart !== null && active.selectionEnd !== null) {
+            const text = active.value.substring(active.selectionStart, active.selectionEnd);
+            active.setRangeText('', active.selectionStart, active.selectionEnd, 'end');
+            active.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteByCut' }));
+            return text;
+        }
+        if (active?.isContentEditable) {
+            const selection = window.getSelection();
+            const text = selection?.toString() ?? '';
+            if (selection && !selection.isCollapsed) {
+                selection.deleteFromDocument();
+                active.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteByCut' }));
+            }
+            return text;
+        }
+        return '';
+    })()
+    """
+
+    private static func pasteScript(textLiteral: String) -> String {
+        """
+        (() => {
+            const text = \(textLiteral);
+            const active = document.activeElement;
+            if ((active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)
+                && !active.readOnly && !active.disabled
+                && active.selectionStart !== null && active.selectionEnd !== null) {
+                const start = active.selectionStart;
+                active.setRangeText(text, start, active.selectionEnd, 'end');
+                active.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+                return true;
+            }
+            if (active?.isContentEditable) {
+                return document.execCommand('insertText', false, text);
+            }
+            return false;
+        })()
+        """
+    }
+
+    private static let selectAllScript = """
+    (() => {
+        const active = document.activeElement;
+        if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) {
+            active.select();
+            return true;
+        }
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(document.body);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return true;
+    })()
+    """
 }
 
 @MainActor
