@@ -142,6 +142,72 @@ final class InlinePreviewPanelTests: XCTestCase {
     }
 
     @MainActor
+    func testDelayedCleanupDoesNotCloseReopenedPreviewMenu() {
+        let registry = InlinePreviewMenuRegistry()
+        let menu = NSMenu()
+        var cleanupCount = 0
+
+        registry.didOpen(menu)
+        registry.didClose(menu)
+        registry.didOpen(menu)
+
+        registry.performCleanupIfClosed(menu) {
+            cleanupCount += 1
+        }
+
+        XCTAssertEqual(cleanupCount, 0)
+
+        registry.didClose(menu)
+        registry.performCleanupIfClosed(menu) {
+            cleanupCount += 1
+        }
+
+        XCTAssertEqual(cleanupCount, 1)
+    }
+
+    @MainActor
+    func testWebViewPreparationRetriesAfterPreviewIsDetachedAndReattached() {
+        let panel = makeWindow()
+        let story = FeedStory(
+            id: "story",
+            title: "Story",
+            link: nil,
+            summary: "Summary",
+            publishedAt: nil,
+            sourceFeedID: UUID()
+        )
+        var pendingCompletions: [(WKWebView) -> Void] = []
+        var factoryCallCount = 0
+        let preview = StoryPreviewMenuView(
+            story: story,
+            feed: nil,
+            size: NSSize(width: 320, height: 240),
+            markReadDelaySeconds: 0,
+            panels: InlinePreviewPanelRegistry(),
+            webViewFactory: { _, completion in
+                factoryCallCount += 1
+                pendingCompletions.append(completion)
+            },
+            markRead: { _ in }
+        )
+        defer { preview.endPreview() }
+
+        panel.contentView?.addSubview(preview)
+        preview.beginPreview()
+        XCTAssertEqual(factoryCallCount, 1)
+
+        preview.removeFromSuperview()
+        pendingCompletions.removeFirst()(WKWebView(frame: preview.bounds))
+        XCTAssertTrue(preview.subviews.isEmpty)
+
+        panel.contentView?.addSubview(preview)
+        XCTAssertEqual(factoryCallCount, 2)
+
+        pendingCompletions.removeFirst()(WKWebView(frame: preview.bounds))
+        XCTAssertEqual(preview.subviews.count, 1)
+    }
+
+    @MainActor
     private func makeWindow() -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 240, height: 240),

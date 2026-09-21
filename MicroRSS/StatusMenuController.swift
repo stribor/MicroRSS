@@ -21,7 +21,7 @@ final class StatusMenuController: NSObject {
     private var previewWindows: [PreviewWindowRecord] = []
     private var storeObserverID: UUID?
     private var updatesPaused = false
-    private var activeInlinePreviewMenus: Set<ObjectIdentifier> = []
+    private let inlinePreviewMenus = InlinePreviewMenuRegistry()
     private var activeInlinePreview: StoryPreviewMenuView?
     private var menuRebuildPending = false
     private var isMenuTracking = false
@@ -77,7 +77,7 @@ final class StatusMenuController: NSObject {
     }
 
     private func rebuildMenu() {
-        guard !isMenuTracking, activeInlinePreviewMenus.isEmpty else {
+        guard !isMenuTracking, inlinePreviewMenus.isEmpty else {
             menuRebuildPending = true
             return
         }
@@ -646,7 +646,7 @@ extension StatusMenuController: NSMenuDelegate {
         let previews = menu.items.compactMap { $0.view as? StoryPreviewMenuView }
         guard !previews.isEmpty else { return }
 
-        activeInlinePreviewMenus.insert(ObjectIdentifier(menu))
+        inlinePreviewMenus.didOpen(menu)
         activeInlinePreview = previews.first
         if let activeInlinePreview {
             EditingCommandRouter.shared.beginInlineSession(target: activeInlinePreview)
@@ -658,6 +658,13 @@ extension StatusMenuController: NSMenuDelegate {
     func menuDidClose(_ menu: NSMenu) {
         if menu === self.menu {
             isMenuTracking = false
+            inlinePreviewMenus.didCloseAll()
+        } else {
+            // Record the closure immediately even though WebKit teardown is
+            // delayed. If this same submenu reopens during the delay,
+            // menuWillOpen(_:) makes it active again and the stale cleanup is
+            // ignored instead of tearing down the newly visible preview.
+            inlinePreviewMenus.didClose(menu)
         }
         EditingCommandRouter.shared.endInlineHotKeyInterception()
         // NSMenu dispatches a key-equivalent action after notifying its delegate
@@ -675,8 +682,8 @@ extension StatusMenuController: NSMenuDelegate {
 
     private func dismissInlinePreviewMenus() {
         cancelTracking(in: menu)
+        inlinePreviewMenus.didCloseAll()
         closeInlineBrowsers(in: menu)
-        activeInlinePreviewMenus.removeAll()
         isMenuTracking = false
         hideClosedPreviewWindows()
         applyPendingMenuRebuildIfPossible()
@@ -703,14 +710,15 @@ extension StatusMenuController: NSMenuDelegate {
     private func closeInlineBrowsers(in menu: NSMenu) {
         let previews = menu.items.compactMap { $0.view as? StoryPreviewMenuView }
         if !previews.isEmpty {
-            activeInlinePreviewMenus.remove(ObjectIdentifier(menu))
-            if previews.contains(where: { $0 === activeInlinePreview }) {
-                if let activeInlinePreview {
-                    EditingCommandRouter.shared.clearInlineTarget(activeInlinePreview)
+            inlinePreviewMenus.performCleanupIfClosed(menu) { [self] in
+                if previews.contains(where: { $0 === activeInlinePreview }) {
+                    if let activeInlinePreview {
+                        EditingCommandRouter.shared.clearInlineTarget(activeInlinePreview)
+                    }
+                    activeInlinePreview = nil
                 }
-                activeInlinePreview = nil
+                previews.forEach { $0.endPreview() }
             }
-            previews.forEach { $0.endPreview() }
         }
 
         for item in menu.items {
@@ -721,7 +729,7 @@ extension StatusMenuController: NSMenuDelegate {
     }
 
     private func applyPendingMenuRebuildIfPossible() {
-        guard menuRebuildPending, !isMenuTracking, activeInlinePreviewMenus.isEmpty else { return }
+        guard menuRebuildPending, !isMenuTracking, inlinePreviewMenus.isEmpty else { return }
         rebuildMenu()
     }
 
@@ -850,6 +858,32 @@ private final class FeedNotificationController: NSObject, UNUserNotificationCent
 }
 
 @MainActor
+final class InlinePreviewMenuRegistry {
+    private var openMenuIDs: Set<ObjectIdentifier> = []
+
+    var isEmpty: Bool {
+        openMenuIDs.isEmpty
+    }
+
+    func didOpen(_ menu: NSMenu) {
+        openMenuIDs.insert(ObjectIdentifier(menu))
+    }
+
+    func didClose(_ menu: NSMenu) {
+        openMenuIDs.remove(ObjectIdentifier(menu))
+    }
+
+    func didCloseAll() {
+        openMenuIDs.removeAll()
+    }
+
+    func performCleanupIfClosed(_ menu: NSMenu, cleanup: () -> Void) {
+        guard !openMenuIDs.contains(ObjectIdentifier(menu)) else { return }
+        cleanup()
+    }
+}
+
+@MainActor
 final class InlinePreviewPanelRegistry {
     // Weak references do not keep AppKit's discarded panels alive. A visible
     // orphan is still owned by AppKit and remains discoverable here.
@@ -869,15 +903,15 @@ final class InlinePreviewPanelRegistry {
     }
 }
 
-private final class StoryPreviewMenuView: NSView, EditingCommandTarget {
+final class StoryPreviewMenuView: NSView, EditingCommandTarget {
     private let story: FeedStory
     private let feed: Feed?
     private let previewSize: NSSize
     private let markReadDelaySeconds: Int
     private let markRead: (FeedStory) -> Void
+    private let webViewFactory: @MainActor @Sendable (NSRect, @escaping (WKWebView) -> Void) -> Void
     private var webView: WKWebView?
     private var webViewLoadID: UUID?
-    private var didStartLoading = false
     private var isPreviewOpen = false
     private let panels: InlinePreviewPanelRegistry
     private var markReadTask: Task<Void, Never>?
@@ -885,13 +919,22 @@ private final class StoryPreviewMenuView: NSView, EditingCommandTarget {
     private var pendingEditingOperations = 0
     private var closeBrowserWhenEditingCompletes = false
 
-    init(story: FeedStory, feed: Feed?, size: NSSize, markReadDelaySeconds: Int, panels: InlinePreviewPanelRegistry, markRead: @escaping (FeedStory) -> Void) {
+    init(
+        story: FeedStory,
+        feed: Feed?,
+        size: NSSize,
+        markReadDelaySeconds: Int,
+        panels: InlinePreviewPanelRegistry,
+        webViewFactory: @escaping @MainActor @Sendable (NSRect, @escaping (WKWebView) -> Void) -> Void = WebPreviewSession.makeWebView,
+        markRead: @escaping (FeedStory) -> Void
+    ) {
         self.story = story
         self.feed = feed
         previewSize = NSSize(width: max(240, size.width), height: max(240, size.height))
         self.markReadDelaySeconds = max(0, markReadDelaySeconds)
         self.markRead = markRead
         self.panels = panels
+        self.webViewFactory = webViewFactory
         super.init(frame: NSRect(origin: .zero, size: previewSize))
     }
 
@@ -949,21 +992,20 @@ private final class StoryPreviewMenuView: NSView, EditingCommandTarget {
 
     private func openBrowser() {
         // NSMenuDelegate can announce a submenu before AppKit has attached its
-        // custom view to the popup window. Starting WebKit setup in that gap can
-        // complete immediately, fail the window check below, and leave this view
-        // permanently stuck in its loading state. viewDidMoveToWindow() retries
-        // once the preview is actually visible.
+        // custom view to the popup window, and rapid submenu changes can detach
+        // it again while WebKit is being prepared. Only start while attached.
         guard isPreviewOpen, window != nil else { return }
-        guard !didStartLoading else { return }
-        didStartLoading = true
+        guard webView == nil, webViewLoadID == nil else { return }
         let loadID = UUID()
         webViewLoadID = loadID
-        WebPreviewSession.makeWebView(frame: bounds) { [weak self] webView in
-            guard let self,
-                  self.isPreviewOpen,
-                  self.didStartLoading,
-                  self.webViewLoadID == loadID,
-                  self.window != nil else {
+        webViewFactory(bounds) { [weak self] webView in
+            guard let self, self.webViewLoadID == loadID else { return }
+            self.webViewLoadID = nil
+            // If AppKit detached the custom view during asynchronous WebKit
+            // setup, leave the load idle. viewDidMoveToWindow() will start a
+            // fresh attempt when this article's preview is attached again.
+            guard self.isPreviewOpen, self.window != nil else {
+                self.needsDisplay = true
                 return
             }
             webView.autoresizingMask = [.width, .height]
@@ -988,7 +1030,7 @@ private final class StoryPreviewMenuView: NSView, EditingCommandTarget {
         }
         closeBrowserWhenEditingCompletes = false
         guard let webView else {
-            didStartLoading = false
+            needsDisplay = true
             return
         }
 
@@ -998,7 +1040,6 @@ private final class StoryPreviewMenuView: NSView, EditingCommandTarget {
         webView.uiDelegate = nil
         webView.removeFromSuperview()
         self.webView = nil
-        didStartLoading = false
         needsDisplay = true
     }
 
